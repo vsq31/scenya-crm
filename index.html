@@ -75,6 +75,7 @@
     <div><h1>Scenya CRM</h1><div class="sub">LOT 2 — Annuaire & recherche croisée · base Supabase live</div></div>
     <div class="tabs">
       <div class="tab on" data-v="annuaire" onclick="switchTab('annuaire')">🏛️ Annuaire</div>
+      <div class="tab" data-v="projets" onclick="switchTab('projets')">🎷 Projets</div>
       <div class="tab" data-v="rappro" onclick="switchTab('rappro')">🔗 Rapprochement dates</div>
     </div>
     <div style="flex:1"></div>
@@ -106,6 +107,15 @@
           <tbody id="listBody"></tbody>
         </table></div>
       </div>
+    </div>
+
+    <div id="v-projets" style="display:none">
+      <div class="card"><b>🎷 Projets & deals</b>
+        <p class="mini" style="margin-top:6px">Fiche centrale de chaque projet : deal (taux de commission propre, défaut 12 %), line-up officiel avec cachet réel par musicien, intervenants avec rôles libres, intérêt stratégique.</p></div>
+      <div class="card"><div class="scroll-y"><table>
+        <thead><tr><th>Projet</th><th>Artiste(s)</th><th>Esthétique</th><th>Taux comm.</th><th>Line-up</th><th>Total cachets</th><th>Intérêts stratégiques</th></tr></thead>
+        <tbody id="projBody"></tbody>
+      </table></div></div>
     </div>
 
     <div id="v-rappro" style="display:none">
@@ -142,6 +152,7 @@ async function init(){
   document.getElementById('appView').style.display='block';
   document.getElementById('userEmail').textContent=session.user.email;
   await loadAll();
+  await loadProjets();
 }
 async function doLogin(){
   const email=document.getElementById('liEmail').value.trim(), pass=document.getElementById('liPass').value;
@@ -373,9 +384,163 @@ async function lierDate(dateId){
 
 function switchTab(v){
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.dataset.v===v));
-  document.getElementById('v-annuaire').style.display=v==='annuaire'?'block':'none';
-  document.getElementById('v-rappro').style.display=v==='rappro'?'block':'none';
+  ['annuaire','projets','rappro'].forEach(x=>{const el=document.getElementById('v-'+x);if(el)el.style.display=x===v?'block':'none';});
 }
+
+/* ========== LOT 3 : PROJETS ========== */
+const INTERETS=['Rentabilité','Notoriété','Développement d\'image','Développement territorial','Projet de création','Entrée dans des réseaux','International','Autre'];
+async function loadProjets(){
+  const [pj,dl,lu,iv,rl,pa,ar,dc,dt]=await Promise.all([
+    sb.from('projets').select('*').order('nom'),
+    sb.from('deals').select('*'),
+    sb.from('lineup').select('*').order('ordre'),
+    sb.from('projet_intervenants').select('*'),
+    sb.from('roles').select('*').order('nom'),
+    sb.from('projet_artistes').select('*'),
+    sb.from('artistes').select('*').order('nom'),
+    sb.from('projet_documents').select('*'),
+    sb.from('dates').select('id,projet_id')
+  ]);
+  for(const r of [pj,dl,lu,iv,rl,pa,ar,dc,dt]) if(r.error){toast('Erreur projets : '+r.error.message,true);return;}
+  DB.projList=pj.data;
+  DB.deals={}; dl.data.forEach(d=>DB.deals[d.projet_id]=d);
+  DB.lineup={}; lu.data.forEach(l=>{(DB.lineup[l.projet_id]=DB.lineup[l.projet_id]||[]).push(l);});
+  DB.interv={}; iv.data.forEach(i=>{(DB.interv[i.projet_id]=DB.interv[i.projet_id]||[]).push(i);});
+  DB.roles=rl.data;
+  DB.projArt={}; pa.data.forEach(x=>{(DB.projArt[x.projet_id]=DB.projArt[x.projet_id]||[]).push(x);});
+  DB.artistes=ar.data;
+  DB.docs={}; dc.data.forEach(d=>{(DB.docs[d.projet_id]=DB.docs[d.projet_id]||[]).push(d);});
+  DB.datesCount={}; dt.data.forEach(d=>DB.datesCount[d.projet_id]=(DB.datesCount[d.projet_id]||0)+1);
+  renderProjets();
+}
+function artNames(pid){return (DB.projArt[pid]||[]).map(x=>{const a=DB.artistes.find(y=>y.id===x.artiste_id);return a?(x.lead?'⭐ ':'')+a.nom:null;}).filter(Boolean).join(', ');}
+function totCachets(pid){return (DB.lineup[pid]||[]).reduce((s,m)=>s+(+m.cachet||0),0);}
+function renderProjets(){
+  document.getElementById('projBody').innerHTML=(DB.projList||[]).map(p=>{
+    const d=DB.deals[p.id]||{};const lu=DB.lineup[p.id]||[];const e=DB.esths.find(x=>x.id===p.esthetique_id);
+    return `<tr class="clik" onclick="openProjet(${p.id})">
+      <td class="row-strong">${esc(p.nom)}</td>
+      <td class="mini">${artNames(p.id)||'—'}</td>
+      <td>${e?`<span class="pill c">${esc(e.nom)}</span>`:'<span class="mini">à renseigner</span>'}</td>
+      <td><span class="pill b">${Math.round((d.taux_commission??0.12)*100)} %</span></td>
+      <td class="mini">${lu.length?lu.length+' musicien(s)':'à renseigner'}</td>
+      <td class="row-strong">${totCachets(p.id)?totCachets(p.id).toLocaleString('fr-FR')+' €':'—'}</td>
+      <td>${(p.interets_strategiques||[]).map(i=>`<span class="pill m">${esc(i)}</span>`).join(' ')||'<span class="mini">—</span>'}</td></tr>`;
+  }).join('');
+}
+function openProjet(id){
+  const p=(DB.projList||[]).find(x=>x.id===id); if(!p)return;
+  const d=DB.deals[id]||{};const lu=DB.lineup[id]||[];const iv=DB.interv[id]||[];const dc=DB.docs[id]||[];
+  document.getElementById('modal').innerHTML=`
+  <div class="modal-h"><span style="font-size:20px">🎷</span><div><h3>${esc(p.nom)}</h3><span class="mini">${artNames(id)||'—'} · ${DB.datesCount[id]||0} date(s)</span></div>
+    <button class="btn sm primary" onclick="saveProjet(${id})">💾 Enregistrer</button><button class="btn sm" onclick="closeModal()">✕</button></div>
+  <div class="modal-b">
+    <div class="sec-t">🎼 Projet</div>
+    <div class="fgrid3">
+      <div><label class="fl">Nom</label><input class="f" id="pNom" value="${esc(p.nom)}"></div>
+      <div><label class="fl">Esthétique</label><select class="f" id="pEsth"><option value="">—</option>${DB.esths.map(e=>`<option value="${e.id}" ${e.id===p.esthetique_id?'selected':''}>${esc(e.nom)}</option>`).join('')}</select></div>
+      <div><label class="fl">Actif</label><select class="f" id="pActif"><option value="true" ${p.actif?'selected':''}>Oui</option><option value="false" ${!p.actif?'selected':''}>Non</option></select></div>
+    </div>
+    <label class="fl">Pitch commercial (modifiable avant chaque envoi)</label>
+    <textarea class="f" id="pPitch" style="height:56px">${esc(p.pitch||'')}</textarea>
+    <div class="sec-t">🤝 Deal — alimente automatiquement commissions & objectifs</div>
+    <div class="fgrid3">
+      <div><label class="fl">Taux de commission (%)</label><input class="f" id="dTaux" type="number" step="0.5" value="${Math.round((d.taux_commission??0.12)*1000)/10}"></div>
+      <div><label class="fl">Partage de résultat (%)</label><input class="f" id="dPart" type="number" step="1" value="${Math.round((d.partage_resultat??0)*100)}"></div>
+      <div><label class="fl">Objectif dates (annuel)</label><input class="f" id="dObjD" type="number" value="${d.objectif_dates??''}"></div>
+      <div><label class="fl">Objectif commission (€)</label><input class="f" id="dObjC" type="number" value="${d.objectif_commission??''}"></div>
+    </div>
+    <div class="sec-t">🎺 Line-up officiel — cachet réel négocié par musicien</div>
+    <div id="pLineup">${lu.map(m=>`<div class="flex center" style="gap:7px;margin-bottom:6px" data-lid="${m.id}">
+      <input class="f lp" value="${esc(m.prenom||'')}" placeholder="Prénom" style="width:110px">
+      <input class="f ln2" value="${esc(m.nom)}" placeholder="Nom" style="width:130px">
+      <input class="f li" value="${esc(m.instrument||'')}" placeholder="Instrument / fonction" style="flex:1">
+      <input class="f lc" type="number" value="${m.cachet??''}" placeholder="Cachet €" style="width:100px" oninput="updTotal(${id})">
+      <button class="btn sm danger" onclick="delMusicien(${m.id},${id},this)">✕</button></div>`).join('')}</div>
+    <div class="flex center" style="gap:7px">
+      <input class="f" id="nmPrenom" placeholder="Prénom" style="width:110px"><input class="f" id="nmNom" placeholder="Nom" style="width:130px">
+      <input class="f" id="nmInstr" placeholder="Instrument" style="flex:1"><input class="f" id="nmCachet" type="number" placeholder="Cachet €" style="width:100px">
+      <button class="btn sm" onclick="addMusicien(${id})">＋ Ajouter</button></div>
+    <p class="mini" style="margin-top:8px">Total cachets : <b id="pTotal">${totCachets(id).toLocaleString('fr-FR')} €</b> — reporté automatiquement sur chaque nouvelle date (modifiable date par date sans toucher au line-up officiel).</p>
+    <div class="sec-t">👥 Intervenants — rôles libres · case « copie mails de confirmation »</div>
+    <div id="pInterv">${iv.map(i=>{const r=DB.roles.find(x=>x.id===i.role_id);return `<div class="flex center" style="gap:7px;margin-bottom:6px" data-iid="${i.id}">
+      <select class="f ir" style="width:150px">${DB.roles.map(x=>`<option value="${x.id}" ${x.id===i.role_id?'selected':''}>${esc(x.nom)}</option>`).join('')}</select>
+      <input class="f ip" value="${esc(i.prenom||'')}" placeholder="Prénom" style="width:100px">
+      <input class="f in2" value="${esc(i.nom)}" placeholder="Nom" style="width:130px">
+      <input class="f ie" value="${esc(i.email||'')}" placeholder="Email" style="flex:1">
+      <label class="mini" style="white-space:nowrap"><input type="checkbox" class="icc" ${i.copie_confirmation?'checked':''}> copie ✉️</label>
+      <button class="btn sm danger" onclick="delInterv(${i.id},${id},this)">✕</button></div>`;}).join('')}</div>
+    <div class="flex center" style="gap:7px">
+      <select class="f" id="niRole" style="width:150px">${DB.roles.map(x=>`<option value="${x.id}">${esc(x.nom)}</option>`).join('')}</select>
+      <input class="f" id="niNom" placeholder="Nom complet" style="flex:1">
+      <button class="btn sm" onclick="addInterv(${id})">＋ Ajouter</button>
+      <input class="f" id="nrRole" placeholder="Nouveau rôle…" style="width:140px"><button class="btn sm" onclick="addRole(${id})">＋ Rôle</button></div>
+    <div class="sec-t">🎯 Intérêt stratégique — la rentabilité n'est pas le seul critère</div>
+    <div>${INTERETS.map(i=>`<span class="chip intstrat ${(p.interets_strategiques||[]).includes(i)?'on':''}" data-i="${esc(i)}" onclick="this.classList.toggle('on')">${esc(i)}</span>`).join('')}</div>
+    <label class="fl" style="margin-top:9px">Analyse / intérêt stratégique du projet</label>
+    <textarea class="f" id="pAnalyse" style="height:56px">${esc(p.analyse_strategique||'')}</textarea>
+    <div class="sec-t">📁 Documents & kit promo</div>
+    <div id="pDocs">${dc.map(x=>`<div class="flex center" style="gap:7px;margin-bottom:6px" data-did="${x.id}">
+      <span>${x.externe?'🔗':'📄'}</span><b style="font-size:12.5px">${esc(x.nom)}</b><span class="mini" style="flex:1">${esc(x.url||'')}</span>
+      <button class="btn sm danger" onclick="delDoc(${x.id},${id},this)">✕</button></div>`).join('')}</div>
+    <div class="flex center" style="gap:7px"><input class="f" id="ndNom" placeholder="Nom (kit promo, fiche technique…)" style="width:220px"><input class="f" id="ndUrl" placeholder="Lien (Drive, YouTube…)" style="flex:1"><button class="btn sm" onclick="addDoc(${id})">＋ Ajouter</button></div>
+  </div>`;
+  document.getElementById('overlay').classList.add('open');
+}
+function updTotal(pid){let t=0;document.querySelectorAll('#pLineup .lc').forEach(i=>t+=+i.value||0);document.getElementById('pTotal').textContent=t.toLocaleString('fr-FR')+' €';}
+async function saveProjet(id){
+  const g=x=>document.getElementById(x).value.trim()||null;
+  const {error:e1}=await sb.from('projets').update({nom:g('pNom'),esthetique_id:+document.getElementById('pEsth').value||null,
+    actif:document.getElementById('pActif').value==='true',pitch:g('pPitch'),analyse_strategique:g('pAnalyse'),
+    interets_strategiques:[...document.querySelectorAll('.chip.intstrat.on')].map(c=>c.dataset.i)}).eq('id',id);
+  const {error:e2}=await sb.from('deals').upsert({projet_id:id,taux_commission:(+document.getElementById('dTaux').value||12)/100,
+    partage_resultat:(+document.getElementById('dPart').value||0)/100,
+    objectif_dates:+document.getElementById('dObjD').value||null,objectif_commission:+document.getElementById('dObjC').value||null});
+  for(const div of document.querySelectorAll('#pLineup [data-lid]')){
+    await sb.from('lineup').update({prenom:div.querySelector('.lp').value.trim()||null,nom:div.querySelector('.ln2').value.trim()||'—',
+      instrument:div.querySelector('.li').value.trim()||null,cachet:+div.querySelector('.lc').value||null}).eq('id',+div.dataset.lid);
+  }
+  for(const div of document.querySelectorAll('#pInterv [data-iid]')){
+    await sb.from('projet_intervenants').update({role_id:+div.querySelector('.ir').value,prenom:div.querySelector('.ip').value.trim()||null,
+      nom:div.querySelector('.in2').value.trim()||'—',email:div.querySelector('.ie').value.trim()||null,
+      copie_confirmation:div.querySelector('.icc').checked}).eq('id',+div.dataset.iid);
+  }
+  if(e1||e2){toast('Erreur : '+((e1||e2).message),true);return;}
+  toast('✓ Projet enregistré'); closeModal(); await loadProjets();
+}
+async function addMusicien(pid){
+  const nom=document.getElementById('nmNom').value.trim();
+  if(!nom){toast('Nom requis',true);return;}
+  const {error}=await sb.from('lineup').insert({projet_id:pid,nom,prenom:document.getElementById('nmPrenom').value.trim()||null,
+    instrument:document.getElementById('nmInstr').value.trim()||null,cachet:+document.getElementById('nmCachet').value||null});
+  if(error){toast(error.message,true);return;}
+  toast('✓ Musicien ajouté'); await loadProjets(); openProjet(pid);
+}
+async function delMusicien(id,pid,btn){await sb.from('lineup').delete().eq('id',id);toast('Musicien retiré');await loadProjets();openProjet(pid);}
+async function addInterv(pid){
+  const nomFull=document.getElementById('niNom').value.trim();
+  if(!nomFull){toast('Nom requis',true);return;}
+  const parts=nomFull.split(' ');const prenom=parts.length>1?parts[0]:null;const nom=parts.length>1?parts.slice(1).join(' '):nomFull;
+  const {error}=await sb.from('projet_intervenants').insert({projet_id:pid,role_id:+document.getElementById('niRole').value,nom,prenom});
+  if(error){toast(error.message,true);return;}
+  await loadProjets(); openProjet(pid);
+}
+async function delInterv(id,pid,btn){await sb.from('projet_intervenants').delete().eq('id',id);toast('Intervenant retiré');await loadProjets();openProjet(pid);}
+async function addRole(pid){
+  const nom=document.getElementById('nrRole').value.trim();
+  if(!nom){toast('Nom du rôle requis',true);return;}
+  const {error}=await sb.from('roles').insert({nom});
+  if(error){toast(error.message,true);return;}
+  toast('✓ Rôle « '+nom+' » créé'); await loadProjets(); openProjet(pid);
+}
+async function addDoc(pid){
+  const nom=document.getElementById('ndNom').value.trim();const url=document.getElementById('ndUrl').value.trim();
+  if(!nom){toast('Nom requis',true);return;}
+  const {error}=await sb.from('projet_documents').insert({projet_id:pid,nom,url:url||null,externe:!!url});
+  if(error){toast(error.message,true);return;}
+  await loadProjets(); openProjet(pid);
+}
+async function delDoc(id,pid,btn){await sb.from('projet_documents').delete().eq('id',id);await loadProjets();openProjet(pid);}
 init();
 </script>
 </body>
