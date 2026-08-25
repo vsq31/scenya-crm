@@ -76,6 +76,7 @@
     <div class="tabs">
       <div class="tab on" data-v="annuaire" onclick="switchTab('annuaire')">🏛️ Annuaire</div>
       <div class="tab" data-v="projets" onclick="switchTab('projets')">🎷 Projets</div>
+      <div class="tab" data-v="dates" onclick="switchTab('dates')">📅 Dates</div>
       <div class="tab" data-v="rappro" onclick="switchTab('rappro')">🔗 Rapprochement dates</div>
     </div>
     <div style="flex:1"></div>
@@ -118,6 +119,24 @@
       </table></div></div>
     </div>
 
+    <div id="v-dates" style="display:none">
+      <div class="card"><div class="flex wrap-f" style="gap:11px;align-items:flex-end">
+        <div><label class="fl">Projet</label><select class="f" id="dfProj" onchange="renderDates()" style="width:190px"></select></div>
+        <div><label class="fl">Saison (sept→août)</label><select class="f" id="dfSais" onchange="renderDates()" style="width:130px"></select></div>
+        <div><label class="fl">Année civile</label><select class="f" id="dfAn" onchange="renderDates()" style="width:110px"></select></div>
+        <div><label class="fl">Statut</label><select class="f" id="dfStat" onchange="renderDates()" style="width:140px"><option value="">Tous</option><option value="prospection">Prospection</option><option value="interet">Intérêt</option><option value="option">Option</option><option value="confirmee">Confirmée</option><option value="realisee">Réalisée</option><option value="annulee">Annulée</option></select></div>
+        <div><label class="fl">Pays</label><select class="f" id="dfPays" onchange="renderDates()" style="width:120px"><option value="">Tous</option><option>France</option><option>Belgique</option></select></div>
+        <div><label class="fl">Région</label><select class="f" id="dfReg" onchange="renderDates()" style="width:170px"></select></div>
+        <div style="flex:1"></div>
+        <button class="btn primary" onclick="exportDatesCSV()">⬇️ Exporter (CSV)</button>
+      </div></div>
+      <div class="kpis" id="dKpis"></div>
+      <div class="card"><div class="card-h"><h3 id="dCount"></h3><span class="mini">clique une date pour la fiche complète (booking · line-up · admin · régie)</span></div>
+        <div class="scroll-y"><table>
+          <thead><tr><th>Date</th><th>Projet</th><th>Lieu / ville</th><th>Saison</th><th>Statut</th><th>Contrat</th><th>Cession HT</th><th>Commission</th><th>Line-up</th></tr></thead>
+          <tbody id="dBody"></tbody></table></div></div>
+    </div>
+
     <div id="v-rappro" style="display:none">
       <div class="card"><b>🔗 Rapprochement des dates orphelines</b>
         <p class="mini" style="margin-top:6px">Ces dates du RÉCAP ne sont pas encore rattachées à un lieu de l'annuaire. Choisis le bon lieu (suggestions automatiques) ou laisse en texte libre.</p></div>
@@ -153,6 +172,7 @@ async function init(){
   document.getElementById('userEmail').textContent=session.user.email;
   await loadAll();
   await loadProjets();
+  await loadDates();
 }
 async function doLogin(){
   const email=document.getElementById('liEmail').value.trim(), pass=document.getElementById('liPass').value;
@@ -370,7 +390,7 @@ function renderRappro(){
       '<optgroup label="Tous les lieux">'+DB.lieux.map(l=>`<option value="${l.id}">${esc(l.nom)} (${esc(l.ville||'')})</option>`).join('')+'</optgroup>';
     return `<tr><td class="row-strong">${d.date_spectacle}</td><td>${esc(DB.projets[d.projet_id]||'—')}</td><td>${esc(d.lieu_texte||'—')}</td><td class="mini">${esc(d.ville_texte||'—')}</td>
       <td><select class="f" id="rap${d.id}" style="min-width:230px">${opts}</select></td>
-      <td><button class="btn sm primary" onclick="lierDate(${d.id})">Lier</button></td></tr>`;
+      <td><div class="flex" style="gap:5px"><button class="btn sm primary" onclick="lierDate(${d.id})">Lier</button><button class="btn sm" title="Créer le lieu dans l'annuaire depuis cette date" onclick="creerLieuDepuisDate(${d.id})">＋ Créer le lieu</button></div></td></tr>`;
   }).join('')||'<tr><td colspan="6" class="mini">🎉 Toutes les dates sont rattachées.</td></tr>';
 }
 async function lierDate(dateId){
@@ -384,7 +404,155 @@ async function lierDate(dateId){
 
 function switchTab(v){
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.dataset.v===v));
-  ['annuaire','projets','rappro'].forEach(x=>{const el=document.getElementById('v-'+x);if(el)el.style.display=x===v?'block':'none';});
+  ['annuaire','projets','dates','rappro'].forEach(x=>{const el=document.getElementById('v-'+x);if(el)el.style.display=x===v?'block':'none';});
+}
+
+/* ========== LOT 4 : DATES ========== */
+const STATUTS={prospection:['Prospection','m'],interet:['Intérêt','c'],option:['Option','b'],confirmee:['Confirmée','g'],realisee:['Réalisée','m'],annulee:['Annulée','m']};
+function saisonOf(iso){const y=+iso.slice(0,4),m=+iso.slice(5,7);const a=m>=9?y:y-1;return String(a).slice(2)+'/'+String(a+1).slice(2);}
+function commOf(d){const p=(DB.projList||[]).find(x=>x.id===d.projet_id);const dl=p?DB.deals[p.id]:null;return Math.round((+d.prix_cession||0)*(dl?.taux_commission??0.12));}
+async function loadDates(){
+  const [dt,dlu]=await Promise.all([sb.from('dates').select('*').order('date_spectacle'),sb.from('date_lineup').select('*')]);
+  if(dt.error||dlu.error){toast('Erreur dates : '+(dt.error||dlu.error).message,true);return;}
+  DB.datesAll=dt.data;
+  DB.dateLineup={}; dlu.data.forEach(m=>{(DB.dateLineup[m.date_id]=DB.dateLineup[m.date_id]||[]).push(m);});
+  fillDateFilters(); renderDates();
+}
+function fillDateFilters(){
+  document.getElementById('dfProj').innerHTML='<option value="">Tous les projets</option>'+(DB.projList||[]).map(p=>`<option value="${p.id}">${esc(p.nom)}</option>`).join('');
+  const sais=[...new Set(DB.datesAll.map(d=>saisonOf(d.date_spectacle)))].sort();
+  document.getElementById('dfSais').innerHTML='<option value="">Toutes</option>'+sais.map(s=>`<option>${s}</option>`).join('');
+  const ans=[...new Set(DB.datesAll.map(d=>d.date_spectacle.slice(0,4)))].sort();
+  document.getElementById('dfAn').innerHTML='<option value="">Toutes</option>'+ans.map(a=>`<option>${a}</option>`).join('');
+  const regs=[...new Set(DB.datesAll.map(d=>d.region).filter(Boolean))].sort();
+  document.getElementById('dfReg').innerHTML='<option value="">Toutes</option>'+regs.map(r=>`<option>${esc(r)}</option>`).join('');
+}
+function filteredDates(){
+  const pj=+document.getElementById('dfProj').value||0, sa=document.getElementById('dfSais').value,
+    an=document.getElementById('dfAn').value, st=document.getElementById('dfStat').value,
+    py=document.getElementById('dfPays').value, rg=document.getElementById('dfReg').value;
+  return (DB.datesAll||[]).filter(d=>(!pj||d.projet_id===pj)&&(!sa||saisonOf(d.date_spectacle)===sa)&&(!an||d.date_spectacle.startsWith(an))&&(!st||d.statut===st)&&(!py||(d.pays||'France')===py)&&(!rg||d.region===rg));
+}
+function lieuLabel(d){if(d.lieu_id){const l=DB.lieux.find(x=>x.id===d.lieu_id);if(l)return l.nom+(l.ville?' · '+l.ville:'');}return (d.lieu_texte||'—')+(d.ville_texte?' · '+d.ville_texte:'');}
+function renderDates(){
+  const rows=filteredDates();
+  const cess=rows.reduce((s,d)=>s+(+d.prix_cession||0),0);
+  const comm=rows.reduce((s,d)=>s+commOf(d),0);
+  const conf=rows.filter(d=>['confirmee','realisee'].includes(d.statut)).length;
+  document.getElementById('dKpis').innerHTML=`
+    <div class="kpi"><div class="v">${rows.length}</div><div class="l">📅 Dates</div></div>
+    <div class="kpi"><div class="v">${conf}</div><div class="l">✅ Confirmées + réalisées</div></div>
+    <div class="kpi"><div class="v">${cess.toLocaleString('fr-FR')} €</div><div class="l">💶 CA Cessions</div></div>
+    <div class="kpi"><div class="v">${comm.toLocaleString('fr-FR')} €</div><div class="l">💰 Commissions (taux projet)</div></div>`;
+  document.getElementById('dCount').textContent=rows.length+' date(s)';
+  document.getElementById('dBody').innerHTML=rows.map(d=>{
+    const p=(DB.projList||[]).find(x=>x.id===d.projet_id);const st=STATUTS[d.statut]||[d.statut,'m'];
+    const lu=DB.dateLineup[d.id]||[];
+    return `<tr class="clik" onclick="openDate(${d.id})">
+      <td class="row-strong" style="white-space:nowrap">${d.date_spectacle}</td>
+      <td>${esc(p?p.nom:'—')}</td><td class="mini">${esc(lieuLabel(d))}</td>
+      <td><span class="pill m">${saisonOf(d.date_spectacle)}</span></td>
+      <td><span class="pill ${st[1]}">${st[0]}</span></td>
+      <td class="mini">${esc(d.type_contrat||'cession')}</td>
+      <td class="row-strong">${d.prix_cession?(+d.prix_cession).toLocaleString('fr-FR')+' €':'—'}</td>
+      <td class="mini">${commOf(d)?commOf(d).toLocaleString('fr-FR')+' €':'—'}</td>
+      <td class="mini">${lu.length?lu.length+' 🎺':'—'}</td></tr>`;
+  }).join('');
+}
+function exportDatesCSV(){
+  const rows=filteredDates();
+  const head=['date','projet','lieu','ville','region','pays','saison','statut','type_contrat','prix_cession_ht','commission','booker'];
+  const lines=[head.join(';')].concat(rows.map(d=>{
+    const p=(DB.projList||[]).find(x=>x.id===d.projet_id);const l=d.lieu_id?DB.lieux.find(x=>x.id===d.lieu_id):null;
+    return [d.date_spectacle,p?p.nom:'',l?l.nom:(d.lieu_texte||''),l?l.ville:(d.ville_texte||''),d.region||'',d.pays||'France',saisonOf(d.date_spectacle),(STATUTS[d.statut]||[d.statut])[0],d.type_contrat||'',d.prix_cession||'',commOf(d)||'',d.booker||''].map(v=>('"'+String(v).replace(/"/g,'""')+'"')).join(';');
+  }));
+  const blob=new Blob(['﻿'+lines.join('\n')],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  const pj=document.getElementById('dfProj');const pname=pj.value?pj.options[pj.selectedIndex].text.replace(/[^\w-]+/g,'_'):'toutes';
+  a.download='scenya_dates_'+pname+'_'+new Date().toISOString().slice(0,10)+'.csv';a.click();
+  toast('✓ Export CSV ('+rows.length+' dates) — prêt pour les dossiers de subvention');
+}
+function openDate(id){
+  const d=(DB.datesAll||[]).find(x=>x.id===id); if(!d)return;
+  const p=(DB.projList||[]).find(x=>x.id===d.projet_id);const lu=DB.dateLineup[id]||[];
+  const dl=p?DB.deals[p.id]:null;const taux=Math.round((dl?.taux_commission??0.12)*100);
+  const ia=d.infos_admin||{};const ir=d.infos_regie||{};
+  document.getElementById('modal').innerHTML=`
+  <div class="modal-h"><span style="font-size:20px">📅</span><div><h3>${esc(p?p.nom:'—')} — ${d.date_spectacle}</h3><span class="mini">${esc(lieuLabel(d))} · saison ${saisonOf(d.date_spectacle)}</span></div>
+    <button class="btn sm primary" onclick="saveDate(${id})">💾 Enregistrer</button><button class="btn sm" onclick="closeModal()">✕</button></div>
+  <div class="modal-b">
+    <div class="sec-t">🎯 Booking</div>
+    <div class="fgrid3">
+      <div><label class="fl">Date</label><input class="f" id="ddDate" type="date" value="${d.date_spectacle}"></div>
+      <div><label class="fl">Heure</label><input class="f" id="ddHeure" type="time" value="${d.heure||''}"></div>
+      <div><label class="fl">Statut</label><select class="f" id="ddStatut">${Object.entries(STATUTS).map(([k,v])=>`<option value="${k}" ${k===d.statut?'selected':''}>${v[0]}</option>`).join('')}</select></div>
+      <div><label class="fl">Type de contrat</label><select class="f" id="ddType">${['cession','production','corealisation','autre'].map(t=>`<option ${t===(d.type_contrat||'cession')?'selected':''}>${t}</option>`).join('')}</select></div>
+      <div><label class="fl">Prix de cession HT (€)</label><input class="f" id="ddPx" type="number" value="${d.prix_cession??''}" oninput="document.getElementById('ddComm').textContent=Math.round((+this.value||0)*${taux}/100).toLocaleString('fr-FR')+' €'"></div>
+      <div><label class="fl">Booker</label><input class="f" id="ddBooker" value="${esc(d.booker||'')}" placeholder="Jérôme, Marie…"></div>
+    </div>
+    <p class="mini">Commission au taux du projet (${taux} %) : <b id="ddComm">${commOf(d).toLocaleString('fr-FR')} €</b></p>
+    <div class="sec-t">🎺 Line-up de cette date — modifiable sans toucher au line-up officiel</div>
+    <div id="ddLineup">${lu.map(m=>`<div class="flex center" style="gap:7px;margin-bottom:6px" data-mid="${m.id}">
+      <input class="f mp" value="${esc(m.prenom||'')}" placeholder="Prénom" style="width:105px">
+      <input class="f mn" value="${esc(m.nom)}" placeholder="Nom" style="width:125px">
+      <input class="f mi" value="${esc(m.instrument||'')}" placeholder="Instrument" style="flex:1">
+      <input class="f mc" type="number" value="${m.cachet??''}" placeholder="Cachet €" style="width:95px">
+      <label class="mini" style="white-space:nowrap"><input type="checkbox" class="mr2" ${m.remplacant?'checked':''}> rempl.</label>
+      <button class="btn sm danger" onclick="delDateMus(${m.id},${id},this)">✕</button></div>`).join('')||'<p class="mini">Aucun musicien sur cette date.</p>'}</div>
+    <div class="flex center" style="gap:7px;margin-top:6px">
+      <input class="f" id="dmPrenom" placeholder="Prénom" style="width:105px"><input class="f" id="dmNom" placeholder="Nom" style="width:125px">
+      <input class="f" id="dmInstr" placeholder="Instrument" style="flex:1"><input class="f" id="dmCachet" type="number" placeholder="Cachet €" style="width:95px">
+      <button class="btn sm" onclick="addDateMus(${id})">＋ Ajouter</button>
+      <button class="btn sm" onclick="reporterLineup(${id},${d.projet_id})">📋 Reporter le line-up officiel</button></div>
+    <div class="sec-t">🗂️ Admin (structure V2 — contrats, factures, échéances)</div>
+    <textarea class="f" id="ddAdmin" style="height:48px" placeholder="Notes administratives (contrat envoyé le…, facture, échéance…)">${esc(ia.notes||'')}</textarea>
+    <div class="sec-t">🎬 Régie (structure V2 — feuille de route, technique, logistique)</div>
+    <div class="fgrid">
+      <div><label class="fl">Statut régie</label><select class="f" id="ddRegie">${[['a_faire','À faire'],['en_cours','En cours'],['termine','Terminé']].map(([k,v])=>`<option value="${k}" ${k===d.statut_regie?'selected':''}>${v}</option>`).join('')}</select></div>
+      <div><label class="fl">Notes régie</label><input class="f" id="ddRegieNotes" value="${esc(ir.notes||'')}" placeholder="Backline, horaires, logistique…"></div>
+    </div>
+  </div>`;
+  document.getElementById('overlay').classList.add('open');
+}
+async function saveDate(id){
+  const g=x=>document.getElementById(x).value;
+  const {error}=await sb.from('dates').update({date_spectacle:g('ddDate'),heure:g('ddHeure')||null,statut:g('ddStatut'),
+    type_contrat:g('ddType'),prix_cession:+g('ddPx')||null,booker:g('ddBooker').trim()||null,statut_regie:g('ddRegie'),
+    infos_admin:{notes:g('ddAdmin').trim()||null},infos_regie:{notes:g('ddRegieNotes').trim()||null}}).eq('id',id);
+  for(const div of document.querySelectorAll('#ddLineup [data-mid]')){
+    await sb.from('date_lineup').update({prenom:div.querySelector('.mp').value.trim()||null,nom:div.querySelector('.mn').value.trim()||'—',
+      instrument:div.querySelector('.mi').value.trim()||null,cachet:+div.querySelector('.mc').value||null,
+      remplacant:div.querySelector('.mr2').checked}).eq('id',+div.dataset.mid);
+  }
+  if(error){toast('Erreur : '+error.message,true);return;}
+  toast('✓ Date enregistrée'); closeModal(); await loadDates();
+}
+async function addDateMus(dateId){
+  const nom=document.getElementById('dmNom').value.trim();
+  if(!nom){toast('Nom requis',true);return;}
+  const {error}=await sb.from('date_lineup').insert({date_id:dateId,nom,prenom:document.getElementById('dmPrenom').value.trim()||null,
+    instrument:document.getElementById('dmInstr').value.trim()||null,cachet:+document.getElementById('dmCachet').value||null});
+  if(error){toast(error.message,true);return;}
+  await loadDates(); openDate(dateId);
+}
+async function delDateMus(id,dateId,btn){await sb.from('date_lineup').delete().eq('id',id);await loadDates();openDate(dateId);}
+async function reporterLineup(dateId,projetId){
+  const lu=DB.lineup[projetId]||[];
+  if(!lu.length){toast('Le projet n\'a pas encore de line-up officiel',true);return;}
+  for(const m of lu){await sb.from('date_lineup').insert({date_id:dateId,nom:m.nom,prenom:m.prenom,instrument:m.instrument,cachet:m.cachet});}
+  toast('✓ Line-up officiel reporté ('+lu.length+' musiciens)'); await loadDates(); openDate(dateId);
+}
+async function creerLieuDepuisDate(dateId){
+  const d=DB.datesOrphelines.find(x=>x.id===dateId); if(!d)return;
+  const nomLieu=(d.lieu_texte||d.ville_texte||'Lieu à préciser').trim();
+  const {data:sp,error:e1}=await sb.from('structures_porteuses').insert({nom:nomLieu,ville:d.ville_texte||null,notes:'Créée depuis la date du '+d.date_spectacle+' (entité juridique à préciser)'}).select().single();
+  if(e1){toast(e1.message,true);return;}
+  const {data:li,error:e2}=await sb.from('lieux').insert({structure_porteuse_id:sp.id,nom:nomLieu,ville:d.ville_texte||null,notes:'Créé depuis le rapprochement des dates'}).select().single();
+  if(e2){toast(e2.message,true);return;}
+  const {error:e3}=await sb.from('dates').update({lieu_id:li.id,structure_porteuse_id:sp.id}).eq('id',dateId);
+  if(e3){toast(e3.message,true);return;}
+  toast('✓ Lieu « '+nomLieu+' » créé et date rattachée — complète sa fiche dans l\'annuaire');
+  await loadAll(); await loadDates();
 }
 
 /* ========== LOT 3 : PROJETS ========== */
