@@ -75,6 +75,7 @@
     <div><h1>Scenya CRM</h1><div class="sub">LOT 2 — Annuaire & recherche croisée · base Supabase live</div></div>
     <div class="tabs">
       <div class="tab on" data-v="annuaire" onclick="switchTab('annuaire')">🏛️ Annuaire</div>
+      <div class="tab" data-v="pilotage" onclick="switchTab('pilotage')">📊 Pilotage</div>
       <div class="tab" data-v="projets" onclick="switchTab('projets')">🎷 Projets</div>
       <div class="tab" data-v="dates" onclick="switchTab('dates')">📅 Dates</div>
       <div class="tab" data-v="rappro" onclick="switchTab('rappro')">🔗 Rapprochement dates</div>
@@ -117,6 +118,24 @@
         <thead><tr><th>Projet</th><th>Artiste(s)</th><th>Esthétique</th><th>Taux comm.</th><th>Line-up</th><th>Total cachets</th><th>Intérêts stratégiques</th></tr></thead>
         <tbody id="projBody"></tbody>
       </table></div></div>
+    </div>
+
+    <div id="v-pilotage" style="display:none">
+      <div class="card"><div class="flex wrap-f" style="gap:11px;align-items:flex-end">
+        <div><label class="fl">Saison</label><select class="f" id="pfSais" onchange="renderPilotage()" style="width:130px"></select></div>
+        <div><label class="fl">Année civile</label><select class="f" id="pfAn" onchange="renderPilotage()" style="width:110px"></select></div>
+        <div><label class="fl">Mois</label><select class="f" id="pfMois" onchange="renderPilotage()" style="width:130px"></select></div>
+        <div style="flex:1"></div>
+        <span class="mini">tous les chiffres sont cliquables → dates génératrices</span>
+      </div></div>
+      <div class="kpis" id="pKpis"></div>
+      <div class="card" id="pObjectif"></div>
+      <div class="flex" style="gap:15px;align-items:flex-start">
+        <div class="card" style="flex:1"><div class="card-h"><h3>👤 Commission par collaborateur</h3><span class="mini">champ « booker » des dates</span></div><div id="pByBooker"></div></div>
+        <div class="card" style="flex:1"><div class="card-h"><h3>🏛️ Commission par structure</h3><span class="mini">structure porteuse des contrats</span></div><div id="pByStruct"></div></div>
+      </div>
+      <div class="card"><div class="card-h"><h3>📈 Pipeline booking — Prospection → Intérêt → Option → Confirmée → Réalisée</h3></div><div class="kpis" id="pPipe" style="grid-template-columns:repeat(5,1fr)"></div></div>
+      <div class="card"><div class="card-h"><h3>Taux de confirmation par mois</h3></div><div class="scroll-y" style="max-height:260px"><table><thead><tr><th>Mois</th><th>Conf. + réal.</th><th>Total</th><th>Taux</th></tr></thead><tbody id="pMoisBody"></tbody></table></div></div>
     </div>
 
     <div id="v-dates" style="display:none">
@@ -404,7 +423,79 @@ async function lierDate(dateId){
 
 function switchTab(v){
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.dataset.v===v));
-  ['annuaire','projets','dates','rappro'].forEach(x=>{const el=document.getElementById('v-'+x);if(el)el.style.display=x===v?'block':'none';});
+  ['annuaire','pilotage','projets','dates','rappro'].forEach(x=>{const el=document.getElementById('v-'+x);if(el)el.style.display=x===v?'block':'none';});
+  if(v==='pilotage')renderPilotage();
+}
+
+/* ========== LOT 5 : PILOTAGE ========== */
+const MOIS_FULL=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+let pilotageInit=false;
+function fillPilotageFilters(){
+  if(pilotageInit||!DB.datesAll)return; pilotageInit=true;
+  const sais=[...new Set(DB.datesAll.map(d=>saisonOf(d.date_spectacle)))].sort();
+  document.getElementById('pfSais').innerHTML='<option value="">Toutes</option>'+sais.map(s=>`<option>${s}</option>`).join('');
+  const ans=[...new Set(DB.datesAll.map(d=>d.date_spectacle.slice(0,4)))].sort();
+  document.getElementById('pfAn').innerHTML='<option value="">Toutes</option>'+ans.map(a=>`<option>${a}</option>`).join('');
+  document.getElementById('pfMois').innerHTML='<option value="">Tous</option>'+MOIS_FULL.map((m,i)=>`<option value="${i+1}">${m}</option>`).join('');
+}
+function pilotageDates(){
+  const sa=document.getElementById('pfSais').value, an=document.getElementById('pfAn').value, mo=+document.getElementById('pfMois').value||0;
+  return (DB.datesAll||[]).filter(d=>(!sa||saisonOf(d.date_spectacle)===sa)&&(!an||d.date_spectacle.startsWith(an))&&(!mo||+d.date_spectacle.slice(5,7)===mo));
+}
+function eur(n){return Math.round(n).toLocaleString('fr-FR')+' €';}
+function renderPilotage(){
+  if(!DB.datesAll)return; fillPilotageFilters();
+  const ds=pilotageDates();
+  const real=ds.filter(d=>['confirmee','realisee'].includes(d.statut));
+  const opts=ds.filter(d=>d.statut==='option');
+  const ints=ds.filter(d=>['interet','prospection'].includes(d.statut));
+  const sum=a=>a.reduce((s,d)=>s+commOf(d),0);
+  const obj=Object.values(DB.deals||{}).reduce((s,d)=>s+(+d.objectif_commission||0),0);
+  const reste=Math.max(0,obj-sum(real));const pct=obj?Math.round(sum(real)/obj*100):null;
+  window.PDRILL={real,opts,ints,all:ds};
+  document.getElementById('pKpis').innerHTML=`
+    <div class="kpi clik" onclick="drillPilotage('real','Commission réalisée (confirmées + réalisées)')" style="cursor:pointer"><div class="v" style="color:var(--green)">${eur(sum(real))}</div><div class="l">✅ Réalisée — ${real.length} représentation(s)</div></div>
+    <div class="kpi clik" onclick="drillPilotage('opts','Commission prévisionnelle (options)')" style="cursor:pointer"><div class="v" style="color:var(--amber)">${eur(sum(opts))}</div><div class="l">⏳ Prévisionnelle (options) — ${opts.length}</div></div>
+    <div class="kpi clik" onclick="drillPilotage('ints','Potentiel (prospection + intérêt)')" style="cursor:pointer"><div class="v" style="color:var(--primary-2)">${eur(sum(ints))}</div><div class="l">🎯 Potentiel (prospection + intérêt) — ${ints.length}</div></div>
+    <div class="kpi"><div class="v">${obj?eur(reste):'—'}</div><div class="l">📌 Reste pour l'objectif ${obj?'('+eur(obj)+')':''}</div></div>`;
+  document.getElementById('pObjectif').innerHTML=obj?`
+    <div class="flex between" style="margin-bottom:7px"><b>Réalisation de l'objectif annuel de commission</b><span class="mini">${eur(sum(real))} / ${eur(obj)} · <b style="color:${pct>=100?'var(--green)':'var(--primary-2)'}">${pct}%</b></span></div>
+    <div style="height:11px;background:var(--surface-2);border-radius:8px;overflow:hidden"><div style="height:100%;width:${Math.min(100,pct)}%;background:linear-gradient(90deg,var(--primary),var(--cyan))"></div></div>`
+    :`<span class="mini">🎯 Aucun objectif de commission défini — renseigne « Objectif commission (€) » dans les fiches projet (onglet Projets) pour activer le suivi.</span>`;
+  const group=(key,el,icon)=>{
+    const g={}; ds.forEach(d=>{const k=key(d);(g[k]=g[k]||[]).push(d);});
+    document.getElementById(el).innerHTML=Object.entries(g).map(([k,arr])=>({k,arr,c:sum(arr.filter(d=>['confirmee','realisee'].includes(d.statut))),p:sum(arr.filter(d=>!['confirmee','realisee','annulee'].includes(d.statut)))}))
+      .sort((a,b)=>(b.c+b.p)-(a.c+a.p)).map(x=>`
+      <div class="flex between center clik" style="padding:8px 4px;border-bottom:1px solid rgba(46,49,87,.5);cursor:pointer" onclick="drillGroup('${el}','${esc(x.k).replace(/'/g,"\\'")}')">
+        <b style="font-size:13px">${icon} ${esc(x.k)}</b>
+        <span class="mini">${x.arr.length} date(s) · <b style="color:var(--green)">${eur(x.c)}</b> réalisé · <span style="color:var(--amber)">${eur(x.p)}</span> prévisionnel</span></div>`).join('')||'<span class="mini">—</span>';
+  };
+  group(d=>d.booker&&d.booker.trim()?d.booker.trim():'Non attribué','pByBooker','👤');
+  group(d=>{if(d.structure_porteuse_id){const s=DB.porteuses[d.structure_porteuse_id];if(s)return s.nom;}return 'Structure à rattacher';},'pByStruct','🏛️');
+  const PSTATS=[['prospection','Prospection','m'],['interet','Intérêt','c'],['option','Option','b'],['confirmee','Confirmée','g'],['realisee','Réalisée','g']];
+  const tot=ds.length||1;
+  document.getElementById('pPipe').innerHTML=PSTATS.map(([k,lab,cl])=>{const arr=ds.filter(d=>d.statut===k);
+    return `<div class="kpi clik" style="cursor:pointer" onclick="drillStatut('${k}','${lab}')"><div class="v">${arr.length} <span style="font-size:13px;color:var(--muted)">· ${Math.round(arr.length/tot*100)}%</span></div><div class="l"><span class="pill ${cl}">${lab}</span> ${eur(sum(arr))}</div></div>`;}).join('');
+  const byM={}; ds.forEach(d=>{const m=+d.date_spectacle.slice(5,7);if(!byM[m])byM[m]={c:0,t:0};byM[m].t++;if(['confirmee','realisee'].includes(d.statut))byM[m].c++;});
+  document.getElementById('pMoisBody').innerHTML=Object.keys(byM).sort((a,b)=>a-b).map(m=>{const o=byM[m];const pc=Math.round(o.c/o.t*100);
+    return `<tr><td class="row-strong">${MOIS_FULL[m-1]}</td><td style="color:var(--green)">${o.c}</td><td>${o.t}</td><td><div class="flex center" style="gap:8px"><div style="width:90px;height:7px;background:var(--surface-2);border-radius:6px;overflow:hidden"><div style="height:100%;width:${pc}%;background:linear-gradient(90deg,var(--primary),var(--cyan))"></div></div><span class="mini">${pc}%</span></div></td></tr>`;}).join('');
+}
+function drillList(title,arr){
+  document.getElementById('modal').innerHTML=`
+  <div class="modal-h"><span style="font-size:20px">🔍</span><div><h3>${title}</h3><span class="mini">${arr.length} date(s) · ${eur(arr.reduce((s,d)=>s+commOf(d),0))} de commission</span></div><button class="btn sm" onclick="closeModal()">✕</button></div>
+  <div class="modal-b"><div class="scroll-y" style="max-height:60vh"><table><thead><tr><th>Date</th><th>Projet</th><th>Lieu</th><th>Booker</th><th>Statut</th><th>Cession HT</th><th>Commission</th></tr></thead><tbody>
+  ${arr.map(d=>{const p=(DB.projList||[]).find(x=>x.id===d.projet_id);const st=STATUTS[d.statut]||[d.statut,'m'];
+    return `<tr class="clik" onclick="closeModal();switchTab('dates');openDate(${d.id})"><td class="row-strong">${d.date_spectacle}</td><td>${esc(p?p.nom:'—')}</td><td class="mini">${esc(lieuLabel(d))}</td><td class="mini">${esc(d.booker||'—')}</td><td><span class="pill ${st[1]}">${st[0]}</span></td><td>${d.prix_cession?(+d.prix_cession).toLocaleString('fr-FR')+' €':'—'}</td><td class="row-strong">${eur(commOf(d))}</td></tr>`;}).join('')}
+  </tbody></table></div></div>`;
+  document.getElementById('overlay').classList.add('open');
+}
+function drillPilotage(key,title){drillList(title,PDRILL[key]||[]);}
+function drillStatut(k,lab){drillList('Pipeline — '+lab,pilotageDates().filter(d=>d.statut===k));}
+function drillGroup(el,k){
+  const ds=pilotageDates();
+  const arr=el==='pByBooker'?ds.filter(d=>((d.booker&&d.booker.trim())||'Non attribué')===k)
+    :ds.filter(d=>{const s=d.structure_porteuse_id?DB.porteuses[d.structure_porteuse_id]:null;return (s?s.nom:'Structure à rattacher')===k;});
+  drillList((el==='pByBooker'?'Collaborateur — ':'Structure — ')+k,arr);
 }
 
 /* ========== LOT 4 : DATES ========== */
