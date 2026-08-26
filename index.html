@@ -4,6 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Scenya CRM — Annuaire</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root{--bg:#0f1020;--surface:#1a1b34;--surface-2:#232544;--line:#2e3157;--text:#eef0ff;--muted:#a0a3c8;
@@ -55,6 +57,53 @@
   .kpi .v{font-size:22px;font-weight:800}.kpi .l{font-size:11px;color:var(--muted);font-weight:600}
   .scroll-y{max-height:60vh;overflow-y:auto}
   .month-grid{display:flex;flex-wrap:wrap;gap:4px}
+  /* ===== THÈME CLAIR (défaut) — inspiré marie-seguret.com : blanc, noir, Work Sans, épuré ===== */
+  body{font-family:'Work Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+  body.light{--bg:#ffffff;--surface:#ffffff;--surface-2:#f6f6f4;--line:#e6e6e2;--text:#111111;--muted:#6b6b6b;
+    --primary:#111111;--primary-2:#333333;--green:#1e9e6a;--amber:#c07c1a;--red:#c0392b;--cyan:#0e7490;}
+  body.light .topbar{background:#fff;border-bottom:1px solid var(--line)}
+  body.light .logo{background:#111;color:#fff;box-shadow:none}
+  body.light .tab.on{background:#111;color:#fff}
+  body.light .tab:hover{background:#f0f0ed}
+  body.light .btn.primary{background:#111;color:#fff;box-shadow:none}
+  body.light .btn.primary:hover{background:#333}
+  body.light .btn:hover{border-color:#111}
+  body.light .chip.on{background:#111;border-color:#111;color:#fff}
+  body.light tr.clik:hover td{background:#f6f6f4}
+  body.light td{border-bottom:1px solid #efefec}
+  body.light .card{box-shadow:0 1px 2px rgba(0,0,0,.03)}
+  body.light .pill.g{background:#e7f5ee;color:#1e7a54}body.light .pill.b{background:#ededed;color:#333}
+  body.light .pill.c{background:#e5f0f4;color:#0e6480}body.light .pill.m{background:#f0f0ed;color:#777}
+  body.light .pill.a{background:#f9efdd;color:#a06a12}body.light .pill.r{background:#f9e5e2;color:#b03426}
+  body.light .toast{box-shadow:0 4px 20px rgba(0,0,0,.12)}
+  body.light .overlay{background:rgba(20,20,20,.35)}
+  body.light .modal{box-shadow:0 12px 50px rgba(0,0,0,.18)}
+  body.light .kpi .v{letter-spacing:-.3px}
+  body.light .sec-t{color:#111;border-bottom:1px solid var(--line);padding-bottom:5px}
+  /* ===== MOBILE — lisibilité téléphone ===== */
+  @media (max-width:760px){
+    body{font-size:15px}
+    .topbar{height:auto;flex-wrap:wrap;padding:10px 12px;gap:8px}
+    .tabs{margin-left:0;width:100%;overflow-x:auto;padding-bottom:2px}
+    .tab{white-space:nowrap;padding:8px 12px}
+    .wrap{padding:12px 10px}
+    .kpis{grid-template-columns:1fr 1fr}
+    .fgrid,.fgrid3{grid-template-columns:1fr}
+    .flex.wrap-f>div{width:100%}
+    .flex.wrap-f select.f,.flex.wrap-f input.search{width:100%!important}
+    input.f,select.f,textarea.f{padding:12px 13px;font-size:16px}
+    .btn{padding:11px 15px;font-size:14px}
+    .overlay{padding:0}
+    .modal{max-width:100%;min-height:100vh;border-radius:0;margin-bottom:0}
+    .modal-h{flex-wrap:wrap;gap:8px}
+    .modal-b{padding:14px 13px}
+    .scroll-y{max-height:none;overflow-x:auto}
+    .card{padding:13px}
+    table{min-width:640px}
+    .month-grid .chip{padding:8px 12px;font-size:13px}
+    .flex.center[style*="gap:7px"],.flex.center[style*="gap:8px"]{flex-wrap:wrap}
+    .flex.center[style*="gap:7px"] input.f,.flex.center[style*="gap:7px"] select.f{width:47%!important;flex:1 1 40%}
+  }
 </style>
 </head>
 <body>
@@ -82,6 +131,7 @@
     </div>
     <div style="flex:1"></div>
     <span class="mini" id="userEmail"></span>
+    <button class="btn sm" id="themeBtn" onclick="toggleTheme()" title="Basculer clair / sombre">🌙</button>
     <button class="btn sm" onclick="sb.auth.signOut().then(()=>location.reload())">Déconnexion</button>
   </div>
 
@@ -179,6 +229,11 @@ const CTYPES=['programmation','administratif','billetterie','promotion','techniq
 const CT_ICON={programmation:'🎯',administratif:'🗂️',billetterie:'🎟️',promotion:'📣',technique:'🎬',autre:'👤'};
 let DB={lieux:[],porteuses:{},jauges:{},contacts:{},types:[],esths:[],datesOrphelines:[],projets:{}};
 let filtDiff=new Set(), filtProg=new Set();
+
+/* Thème clair (défaut, style marie-seguret.com) / sombre — persisté */
+function applyTheme(t){document.body.classList.toggle('light',t==='light');const b=document.getElementById('themeBtn');if(b)b.textContent=t==='light'?'🌙':'☀️';try{localStorage.setItem('scenya_theme',t);}catch(e){}}
+function toggleTheme(){applyTheme(document.body.classList.contains('light')?'dark':'light');}
+applyTheme((()=>{try{return localStorage.getItem('scenya_theme')||'light';}catch(e){return 'light';}})());
 
 function toast(msg,err){const t=document.getElementById('toast');t.textContent=msg;t.className='toast'+(err?' err':'');t.style.display='block';setTimeout(()=>t.style.display='none',2600);}
 const esc=s=>(s??'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
