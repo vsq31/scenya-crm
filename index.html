@@ -127,6 +127,7 @@
       <div class="tab" data-v="pilotage" onclick="switchTab('pilotage')">📊 Pilotage</div>
       <div class="tab" data-v="projets" onclick="switchTab('projets')">🎷 Projets</div>
       <div class="tab" data-v="dates" onclick="switchTab('dates')">📅 Dates</div>
+      <div class="tab" data-v="renta" onclick="switchTab('renta')">📈 Rentabilité</div>
       <div class="tab" data-v="rappro" onclick="switchTab('rappro')">🔗 Rapprochement dates</div>
     </div>
     <div style="flex:1"></div>
@@ -204,6 +205,18 @@
         <div class="scroll-y"><table>
           <thead><tr><th>Date</th><th>Projet</th><th>Lieu / ville</th><th>Saison</th><th>Statut</th><th>Contrat</th><th>Cession HT</th><th>Commission</th><th>Line-up</th></tr></thead>
           <tbody id="dBody"></tbody></table></div></div>
+    </div>
+
+    <div id="v-renta" style="display:none">
+      <div class="card"><div class="flex wrap-f between center" style="gap:11px">
+        <div><b>📈 Performance économique des projets</b>
+          <p class="mini" style="margin-top:5px">Le nombre de dates seul ne suffit pas : un projet peut produire deux fois plus de CA avec moins de dates. Classement par <b>CA moyen généré par représentation</b>. La rentabilité n'est pas le seul critère — les intérêts stratégiques sont affichés en regard.</p></div>
+        <div><label class="fl">Comparer les projets de…</label><select class="f" id="rfArtiste" onchange="renderRenta()" style="width:220px"></select></div>
+      </div></div>
+      <div class="card"><div class="scroll-y"><table>
+        <thead><tr><th>#</th><th>Projet</th><th>Artiste(s)</th><th>Dates</th><th>CA Cessions</th><th>CA moyen / représ.</th><th>Commission totale</th><th>Comm. moy. / représ.</th><th>Par saison</th><th>Intérêts stratégiques</th></tr></thead>
+        <tbody id="rentaBody"></tbody></table></div>
+        <p class="mini" style="margin-top:9px">Calculs sur les dates non annulées avec prix de cession renseigné · commission au taux du deal de chaque projet.</p></div>
     </div>
 
     <div id="v-rappro" style="display:none">
@@ -478,8 +491,43 @@ async function lierDate(dateId){
 
 function switchTab(v){
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.dataset.v===v));
-  ['annuaire','pilotage','projets','dates','rappro'].forEach(x=>{const el=document.getElementById('v-'+x);if(el)el.style.display=x===v?'block':'none';});
+  ['annuaire','pilotage','projets','dates','renta','rappro'].forEach(x=>{const el=document.getElementById('v-'+x);if(el)el.style.display=x===v?'block':'none';});
   if(v==='pilotage')renderPilotage();
+  if(v==='renta')renderRenta();
+}
+
+/* ========== LOT 6 : RENTABILITÉ COMPARÉE ========== */
+let rentaInit=false;
+function renderRenta(){
+  if(!DB.datesAll||!DB.projList)return;
+  if(!rentaInit){rentaInit=true;
+    document.getElementById('rfArtiste').innerHTML='<option value="">Tous les projets de l\'agence</option>'+(DB.artistes||[]).map(a=>`<option value="${a.id}">${esc(a.nom)}</option>`).join('');}
+  const artId=+document.getElementById('rfArtiste').value||0;
+  let projs=DB.projList;
+  if(artId)projs=projs.filter(p=>(DB.projArt[p.id]||[]).some(x=>x.artiste_id===artId));
+  const stats=projs.map(p=>{
+    const ds=(DB.datesAll||[]).filter(d=>d.projet_id===p.id&&d.statut!=='annulee');
+    const dsPx=ds.filter(d=>+d.prix_cession>0);
+    const ca=dsPx.reduce((s,d)=>s+ +d.prix_cession,0);
+    const comm=dsPx.reduce((s,d)=>s+commOf(d),0);
+    const bySais={};ds.forEach(d=>{const s=saisonOf(d.date_spectacle);bySais[s]=(bySais[s]||0)+1;});
+    return {p,n:ds.length,nPx:dsPx.length,ca,caMoy:dsPx.length?Math.round(ca/dsPx.length):0,comm,commMoy:dsPx.length?Math.round(comm/dsPx.length):0,bySais};
+  }).filter(x=>x.n>0).sort((a,b)=>b.caMoy-a.caMoy);
+  const maxCaMoy=stats.length?stats[0].caMoy:1;
+  document.getElementById('rentaBody').innerHTML=stats.map((x,i)=>`
+    <tr class="clik" onclick="openProjet(${x.p.id})">
+      <td class="row-strong">${i+1}${i===0?' 🏆':''}</td>
+      <td class="row-strong">${esc(x.p.nom)}</td>
+      <td class="mini">${artNames(x.p.id)||'—'}</td>
+      <td>${x.n}</td>
+      <td class="row-strong">${x.ca.toLocaleString('fr-FR')} €</td>
+      <td><div class="flex center" style="gap:8px"><b style="color:${i===0?'var(--green)':'inherit'}">${x.caMoy.toLocaleString('fr-FR')} €</b>
+        <div style="width:70px;height:6px;background:var(--surface-2);border-radius:5px;overflow:hidden"><div style="height:100%;width:${Math.round(x.caMoy/maxCaMoy*100)}%;background:var(--primary)"></div></div></div></td>
+      <td>${x.comm.toLocaleString('fr-FR')} €</td>
+      <td class="row-strong">${x.commMoy.toLocaleString('fr-FR')} €</td>
+      <td class="mini">${Object.entries(x.bySais).sort().map(([s,n])=>`<span class="pill m">${s}: ${n}</span>`).join(' ')}</td>
+      <td>${(x.p.interets_strategiques||[]).map(t=>`<span class="pill c">${esc(t)}</span>`).join(' ')||'<span class="mini">—</span>'}</td>
+    </tr>`).join('')||'<tr><td colspan="10" class="mini">Aucune date pour cette sélection.</td></tr>';
 }
 
 /* ========== LOT 5 : PILOTAGE ========== */
