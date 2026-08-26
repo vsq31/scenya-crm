@@ -127,6 +127,7 @@
       <div class="tab" data-v="pilotage" onclick="switchTab('pilotage')">📊 Pilotage</div>
       <div class="tab" data-v="projets" onclick="switchTab('projets')">🎷 Projets</div>
       <div class="tab" data-v="dates" onclick="switchTab('dates')">📅 Dates</div>
+      <div class="tab" data-v="billet" onclick="switchTab('billet')">🎟️ Billetterie</div>
       <div class="tab" data-v="renta" onclick="switchTab('renta')">📈 Rentabilité</div>
       <div class="tab" data-v="rappro" onclick="switchTab('rappro')">🔗 Rapprochement dates</div>
     </div>
@@ -207,6 +208,18 @@
           <tbody id="dBody"></tbody></table></div></div>
     </div>
 
+    <div id="v-billet" style="display:none">
+      <div class="card"><div class="flex wrap-f between" style="gap:14px;align-items:flex-end">
+        <div><b>🎟️ Suivi des billetteries</b>
+          <p class="mini" style="margin-top:5px">Pointages réguliers avec historique et courbe d'évolution. Les demandes de relevé sont dues selon les fréquences ci-contre (paramétrables).</p></div>
+        <div class="flex center wrap-f" style="gap:8px" id="bParams"></div>
+      </div></div>
+      <div class="card"><div class="card-h"><h3>🔔 Pointages à demander</h3><span class="sub" id="bDueCount"></span></div>
+        <div class="scroll-y"><table><thead><tr><th>Date</th><th>J-</th><th>Projet</th><th>Lieu</th><th>Dernier pointage</th><th>Fréquence due</th><th>Contact billetterie</th><th></th></tr></thead><tbody id="bDueBody"></tbody></table></div></div>
+      <div class="card"><div class="card-h"><h3>📊 Dates à venir suivies (confirmées + options)</h3><span class="mini">clique pour l'historique et la saisie</span></div>
+        <div class="scroll-y"><table><thead><tr><th>Date</th><th>Projet</th><th>Lieu</th><th>Pointages</th><th>Dernier relevé</th><th>Taux</th><th>Tendance</th></tr></thead><tbody id="bBody"></tbody></table></div></div>
+    </div>
+
     <div id="v-renta" style="display:none">
       <div class="card"><div class="flex wrap-f between center" style="gap:11px">
         <div><b>📈 Performance économique des projets</b>
@@ -260,6 +273,7 @@ async function init(){
   await loadAll();
   await loadProjets();
   await loadDates();
+  await loadBillet();
 }
 async function doLogin(){
   const email=document.getElementById('liEmail').value.trim(), pass=document.getElementById('liPass').value;
@@ -491,9 +505,142 @@ async function lierDate(dateId){
 
 function switchTab(v){
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.dataset.v===v));
-  ['annuaire','pilotage','projets','dates','renta','rappro'].forEach(x=>{const el=document.getElementById('v-'+x);if(el)el.style.display=x===v?'block':'none';});
+  ['annuaire','pilotage','projets','dates','billet','renta','rappro'].forEach(x=>{const el=document.getElementById('v-'+x);if(el)el.style.display=x===v?'block':'none';});
   if(v==='pilotage')renderPilotage();
   if(v==='renta')renderRenta();
+  if(v==='billet')renderBillet();
+}
+
+/* ========== LOT 7 : BILLETTERIE ========== */
+async function loadBillet(){
+  const [pt,pr]=await Promise.all([sb.from('pointages').select('*').order('date_pointage'),sb.from('params_relances').select('*').order('seuil_jours',{ascending:false})]);
+  if(pt.error||pr.error){toast('Erreur billetterie : '+(pt.error||pr.error).message,true);return;}
+  DB.pointages={}; pt.data.forEach(p=>{(DB.pointages[p.date_id]=DB.pointages[p.date_id]||[]).push(p);});
+  DB.relances=pr.data;
+}
+function todayIso(){return new Date().toISOString().slice(0,10);}
+function daysBetween(a,b){return Math.round((new Date(b)-new Date(a))/864e5);}
+function freqFor(daysTo){const ps=[...(DB.relances||[])].sort((a,b)=>b.seuil_jours-a.seuil_jours);
+  for(const p of ps){if(daysTo>p.seuil_jours)return p.frequence_jours;}
+  return ps.length?ps[ps.length-1].frequence_jours:7;}
+function billetContact(d){
+  const pool=(d.lieu_id?(DB.contacts[d.lieu_id]||[]):[]).concat(d.structure_porteuse_id?(DB.contacts['s'+d.structure_porteuse_id]||[]):[]);
+  return pool.find(c=>c.type==='billetterie')||pool.find(c=>c.type==='programmation')||null;
+}
+function lastPointage(d){const ps=DB.pointages[d.id]||[];return ps.length?ps[ps.length-1]:null;}
+function sparkline(ps){
+  if(ps.length<2)return '<span class="mini">—</span>';
+  const taux=ps.map(p=>p.jauge?Math.round(p.billets_vendus/p.jauge*100):0);
+  const max=Math.max(...taux,100);const w=90,h=24;
+  const pts=taux.map((t,i)=>(i/(taux.length-1)*w).toFixed(1)+','+(h-t/max*h).toFixed(1)).join(' ');
+  return `<svg width="${w}" height="${h}" style="vertical-align:middle"><polyline points="${pts}" fill="none" stroke="var(--cyan)" stroke-width="2"/></svg> <span class="mini up">${taux[taux.length-1]-taux[0]>=0?'+':''}${taux[taux.length-1]-taux[0]} pts</span>`;
+}
+function renderBillet(){
+  if(!DB.datesAll)return;
+  document.getElementById('bParams').innerHTML=(DB.relances||[]).map(p=>`
+    <div style="text-align:center"><label class="fl">${p.seuil_jours>0?'Jusqu\'à J-'+p.seuil_jours:'Dernier mois'}</label>
+    <div class="flex center" style="gap:4px">tous les <input class="f bfreq" data-pid="${p.id}" type="number" value="${p.frequence_jours}" style="width:58px;text-align:center"> j</div></div>`).join('')
+    +`<button class="btn sm primary" onclick="saveRelances()">💾</button>`;
+  const today=todayIso();
+  const up=(DB.datesAll||[]).filter(d=>d.date_spectacle>=today&&['confirmee','option'].includes(d.statut)).sort((a,b)=>a.date_spectacle.localeCompare(b.date_spectacle));
+  const due=up.filter(d=>{const lp=lastPointage(d);const f=freqFor(daysBetween(today,d.date_spectacle));
+    return !lp||daysBetween(lp.date_pointage,today)>=f;});
+  document.getElementById('bDueCount').textContent=due.length+' demande(s) à envoyer';
+  document.getElementById('bDueBody').innerHTML=due.map(d=>{
+    const p=(DB.projList||[]).find(x=>x.id===d.projet_id);const lp=lastPointage(d);const ct=billetContact(d);
+    const dt=daysBetween(today,d.date_spectacle);
+    return `<tr><td class="row-strong">${d.date_spectacle}</td><td><span class="pill ${dt<=30?'a':'m'}">J-${dt}</span></td>
+      <td>${esc(p?p.nom:'—')}</td><td class="mini">${esc(lieuLabel(d))}</td>
+      <td class="mini">${lp?lp.date_pointage+' ('+lp.billets_vendus+' billets)':'jamais pointé'}</td>
+      <td class="mini">tous les ${freqFor(dt)} j</td>
+      <td class="mini">${ct?esc((ct.prenom||'')+' '+(ct.nom||''))+(ct.email?'':' <span class="pill a">email manquant</span>'):'<span class="pill a">à renseigner (fiche lieu)</span>'}</td>
+      <td><div class="flex" style="gap:5px">${ct&&ct.email?`<a class="btn sm primary" style="text-decoration:none" href="${mailtoReleve(d,p,ct)}">✉️ Demander</a>`:''}<button class="btn sm" onclick="openBillet(${d.id})">＋ Pointage</button></div></td></tr>`;
+  }).join('')||'<tr><td colspan="8" class="mini">🎉 Aucune demande due — tout est à jour.</td></tr>';
+  document.getElementById('bBody').innerHTML=up.map(d=>{
+    const p=(DB.projList||[]).find(x=>x.id===d.projet_id);const ps=DB.pointages[d.id]||[];const lp=ps[ps.length-1];
+    const taux=lp&&lp.jauge?Math.round(lp.billets_vendus/lp.jauge*100):null;
+    return `<tr class="clik" onclick="openBillet(${d.id})"><td class="row-strong">${d.date_spectacle}</td><td>${esc(p?p.nom:'—')}</td><td class="mini">${esc(lieuLabel(d))}</td>
+      <td>${ps.length||'—'}</td><td class="mini">${lp?lp.date_pointage+' · '+lp.billets_vendus+'/'+(lp.jauge||'?'):'—'}</td>
+      <td>${taux!==null?`<span class="pill ${taux>=80?'g':taux>=50?'a':'r'}">${taux}%</span>`:'<span class="mini">—</span>'}</td>
+      <td>${sparkline(ps)}</td></tr>`;
+  }).join('')||'<tr><td colspan="7" class="mini">Aucune date confirmée ou en option à venir.</td></tr>';
+}
+function mailtoReleve(d,p,ct){
+  const su=encodeURIComponent('Relevé billetterie — '+(p?p.nom:'')+' le '+d.date_spectacle);
+  const bo=encodeURIComponent('Bonjour '+(ct.prenom||'')+',\n\nPourriez-vous nous transmettre le nombre de billets vendus à ce jour pour '+(p?p.nom:'notre spectacle')+' le '+d.date_spectacle+' ('+lieuLabel(d)+') ?\n\nMerci beaucoup !\n');
+  return 'mailto:'+ct.email+'?subject='+su+'&body='+bo;
+}
+async function saveRelances(){
+  for(const inp of document.querySelectorAll('.bfreq')){
+    const v=+inp.value||7;
+    await sb.from('params_relances').update({frequence_jours:v}).eq('id',+inp.dataset.pid);
+  }
+  toast('✓ Fréquences de relance enregistrées'); await loadBillet(); renderBillet();
+}
+function openBillet(id){
+  const d=(DB.datesAll||[]).find(x=>x.id===id); if(!d)return;
+  const p=(DB.projList||[]).find(x=>x.id===d.projet_id);const ps=DB.pointages[id]||[];
+  const lp=ps[ps.length-1];
+  let jaugeDef=lp?lp.jauge:'';
+  if(!jaugeDef&&d.lieu_id){const js=DB.jauges[d.lieu_id]||[];if(js.length)jaugeDef=Math.max(...js.map(j=>j.capacite));}
+  document.getElementById('modal').innerHTML=`
+  <div class="modal-h"><span style="font-size:20px">🎟️</span><div><h3>${esc(p?p.nom:'—')} — ${d.date_spectacle}</h3><span class="mini">${esc(lieuLabel(d))} · billetterie</span></div><button class="btn sm" onclick="closeModal()">✕</button></div>
+  <div class="modal-b">
+    <div class="sec-t">📈 Évolution des ventes</div>
+    <div style="text-align:center;padding:6px 0 10px">${ps.length>=2?sparkline(ps).replace('width="90" height="24"','width="420" height="80"'):'<span class="mini">La courbe apparaîtra à partir de 2 pointages.</span>'}</div>
+    <div class="sec-t">🗒️ Historique des pointages</div>
+    <table><thead><tr><th>Date du pointage</th><th>Billets vendus</th><th>Jauge</th><th>Taux</th><th></th></tr></thead><tbody>
+    ${[...ps].reverse().map(x=>`<tr><td class="row-strong">${x.date_pointage}</td><td>${x.billets_vendus}</td><td>${x.jauge||'—'}</td><td>${x.jauge?`<span class="pill ${Math.round(x.billets_vendus/x.jauge*100)>=80?'g':'a'}">${Math.round(x.billets_vendus/x.jauge*100)}%</span>`:'—'}</td><td><button class="btn sm danger" onclick="delPointage(${x.id},${id})">✕</button></td></tr>`).join('')||'<tr><td colspan="5" class="mini">Aucun pointage.</td></tr>'}
+    </tbody></table>
+    <div class="sec-t">＋ Nouveau pointage</div>
+    <div class="fgrid3">
+      <div><label class="fl">Date du relevé</label><input class="f" id="npDate" type="date" value="${todayIso()}"></div>
+      <div><label class="fl">Billets vendus</label><input class="f" id="npVendus" type="number" placeholder="ex : 143"></div>
+      <div><label class="fl">Jauge</label><input class="f" id="npJauge" type="number" value="${jaugeDef}" placeholder="capacité"></div>
+    </div>
+    <button class="btn primary" onclick="addPointage(${id})">💾 Enregistrer le pointage</button>
+  </div>`;
+  document.getElementById('overlay').classList.add('open');
+}
+async function addPointage(dateId){
+  const v=+document.getElementById('npVendus').value;
+  if(!(v>=0)){toast('Nombre de billets requis',true);return;}
+  const {error}=await sb.from('pointages').insert({date_id:dateId,date_pointage:document.getElementById('npDate').value||todayIso(),billets_vendus:v,jauge:+document.getElementById('npJauge').value||null,source:'manuel'});
+  if(error){toast(error.message,true);return;}
+  toast('✓ Pointage enregistré'); await loadBillet(); renderBillet(); openBillet(dateId);
+}
+async function delPointage(id,dateId){await sb.from('pointages').delete().eq('id',id);await loadBillet();renderBillet();openBillet(dateId);}
+
+/* ========== LOT 7 : EXPORT PDF PERSONNALISABLE ========== */
+const PDF_SECTIONS=[['infos','Infos projet & pitch'],['deal','Deal & objectifs'],['lineup','Line-up & cachets'],['stats','Statistiques (dates, CA, moyennes)'],['saisons','Évolution par saison'],['listedates','Liste détaillée des dates'],['strat','Intérêt stratégique']];
+function exportPdfProjet(pid){
+  const p=(DB.projList||[]).find(x=>x.id===pid); if(!p)return;
+  document.getElementById('modal').innerHTML=`
+  <div class="modal-h"><span style="font-size:20px">📄</span><div><h3>Export PDF — ${esc(p.nom)}</h3><span class="mini">coche les informations à inclure — rien d'autre n'apparaîtra</span></div><button class="btn sm" onclick="closeModal()">✕</button></div>
+  <div class="modal-b">
+    ${PDF_SECTIONS.map(([k,lab])=>`<label class="flex center" style="gap:9px;padding:7px 0;cursor:pointer"><input type="checkbox" class="pdfsec" value="${k}" ${['infos','stats','saisons','listedates'].includes(k)?'checked':''}> ${lab}${k==='lineup'?' <span class="mini">(cachets = donnée sensible)</span>':''}</label>`).join('')}
+    <div class="flex" style="gap:10px;margin-top:14px"><button class="btn primary" onclick="genPdfProjet(${pid})">📄 Générer le PDF</button><button class="btn" onclick="closeModal()">Annuler</button></div>
+  </div>`;
+  document.getElementById('overlay').classList.add('open');
+}
+function genPdfProjet(pid){
+  const p=(DB.projList||[]).find(x=>x.id===pid);
+  const secs=[...document.querySelectorAll('.pdfsec:checked')].map(c=>c.value);
+  const d=DB.deals[pid]||{};const lu=DB.lineup[pid]||[];
+  const ds=(DB.datesAll||[]).filter(x=>x.projet_id===pid&&x.statut!=='annulee').sort((a,b)=>a.date_spectacle.localeCompare(b.date_spectacle));
+  const dsPx=ds.filter(x=>+x.prix_cession>0);const ca=dsPx.reduce((s,x)=>s+ +x.prix_cession,0);const comm=dsPx.reduce((s,x)=>s+commOf(x),0);
+  const bySais={};ds.forEach(x=>{const s=saisonOf(x.date_spectacle);bySais[s]=(bySais[s]||0)+1;});
+  let body='';
+  if(secs.includes('infos'))body+=`<h2>${esc(p.nom)}</h2><p><b>Artiste(s) :</b> ${artNames(pid).replace(/⭐ /g,'★ ')||'—'}</p>${p.pitch?`<p>${esc(p.pitch)}</p>`:''}`;
+  if(secs.includes('deal'))body+=`<h3>Deal</h3><p>Taux de commission : <b>${Math.round((d.taux_commission??0.12)*100)} %</b>${d.partage_resultat?' · Partage de résultat : '+Math.round(d.partage_resultat*100)+' %':''}${d.objectif_dates?' · Objectif : '+d.objectif_dates+' dates/an':''}${d.objectif_commission?' · Objectif commission : '+(+d.objectif_commission).toLocaleString('fr-FR')+' €':''}</p>`;
+  if(secs.includes('lineup')&&lu.length)body+=`<h3>Line-up officiel</h3><table border="1" cellpadding="6" style="border-collapse:collapse"><tr><th>Musicien</th><th>Instrument</th><th>Cachet</th></tr>${lu.map(m=>`<tr><td>${esc((m.prenom||'')+' '+m.nom)}</td><td>${esc(m.instrument||'')}</td><td>${m.cachet?(+m.cachet).toLocaleString('fr-FR')+' €':'—'}</td></tr>`).join('')}<tr><td colspan="2"><b>Total</b></td><td><b>${lu.reduce((s,m)=>s+(+m.cachet||0),0).toLocaleString('fr-FR')} €</b></td></tr></table>`;
+  if(secs.includes('stats'))body+=`<h3>Statistiques</h3><p>Dates : <b>${ds.length}</b> · CA Cessions : <b>${ca.toLocaleString('fr-FR')} €</b> · CA moyen/représentation : <b>${dsPx.length?Math.round(ca/dsPx.length).toLocaleString('fr-FR'):0} €</b> · Commissions : <b>${comm.toLocaleString('fr-FR')} €</b></p>`;
+  if(secs.includes('saisons'))body+=`<h3>Par saison</h3><p>${Object.entries(bySais).sort().map(([s,n])=>'Saison '+s+' : '+n+' date(s)').join(' · ')}</p>`;
+  if(secs.includes('listedates'))body+=`<h3>Dates</h3><table border="1" cellpadding="6" style="border-collapse:collapse"><tr><th>Date</th><th>Lieu</th><th>Statut</th><th>Cession HT</th></tr>${ds.map(x=>`<tr><td>${x.date_spectacle}</td><td>${esc(lieuLabel(x))}</td><td>${(STATUTS[x.statut]||[x.statut])[0]}</td><td>${x.prix_cession?(+x.prix_cession).toLocaleString('fr-FR')+' €':'—'}</td></tr>`).join('')}</table>`;
+  if(secs.includes('strat'))body+=`<h3>Intérêt stratégique</h3><p>${(p.interets_strategiques||[]).join(' · ')||'—'}</p>${p.analyse_strategique?`<p><i>${esc(p.analyse_strategique)}</i></p>`:''}`;
+  const w=window.open('','_blank');
+  w.document.write(`<html><head><title>Scenya — ${esc(p.nom)}</title><style>body{font-family:'Work Sans',Arial,sans-serif;padding:40px;color:#111;max-width:800px;margin:0 auto}h1{border-bottom:2px solid #111;padding-bottom:8px}h3{margin-top:22px}table{margin:8px 0;width:100%}th{background:#f4f4f2;text-align:left}</style></head><body><h1>Scenya — ${esc(p.nom)}</h1><p style="color:#888">Rapport généré le ${todayIso()}</p>${body}<hr><p style="color:#888;font-size:12px">Scenya CRM · Imprimer → Enregistrer en PDF</p></body></html>`);
+  w.document.close();closeModal();setTimeout(()=>w.print(),400);
 }
 
 /* ========== LOT 6 : RENTABILITÉ COMPARÉE ========== */
@@ -795,7 +942,7 @@ function openProjet(id){
   const d=DB.deals[id]||{};const lu=DB.lineup[id]||[];const iv=DB.interv[id]||[];const dc=DB.docs[id]||[];
   document.getElementById('modal').innerHTML=`
   <div class="modal-h"><span style="font-size:20px">🎷</span><div><h3>${esc(p.nom)}</h3><span class="mini">${artNames(id)||'—'} · ${DB.datesCount[id]||0} date(s)</span></div>
-    <button class="btn sm primary" onclick="saveProjet(${id})">💾 Enregistrer</button><button class="btn sm" onclick="closeModal()">✕</button></div>
+    <button class="btn sm" onclick="exportPdfProjet(${id})">📄 PDF</button><button class="btn sm primary" onclick="saveProjet(${id})">💾 Enregistrer</button><button class="btn sm" onclick="closeModal()">✕</button></div>
   <div class="modal-b">
     <div class="sec-t">🎼 Projet</div>
     <div class="fgrid3">
@@ -803,7 +950,11 @@ function openProjet(id){
       <div><label class="fl">Esthétique</label><select class="f" id="pEsth"><option value="">—</option>${DB.esths.map(e=>`<option value="${e.id}" ${e.id===p.esthetique_id?'selected':''}>${esc(e.nom)}</option>`).join('')}</select></div>
       <div><label class="fl">Actif</label><select class="f" id="pActif"><option value="true" ${p.actif?'selected':''}>Oui</option><option value="false" ${!p.actif?'selected':''}>Non</option></select></div>
     </div>
-    <label class="fl">Pitch commercial (modifiable avant chaque envoi)</label>
+    <div class="sec-t">🎤 Artistes du projet — clique pour lier/délier · ⭐ = lead</div>
+    <div>${(DB.artistes||[]).map(a=>{const link=(DB.projArt[id]||[]).find(x=>x.artiste_id===a.id);return `<span class="chip partiste ${link?'on':''}" data-a="${a.id}" onclick="this.classList.toggle('on')">${esc(a.nom)}</span>`;}).join('')}</div>
+    <div class="flex center" style="gap:8px;margin-top:7px"><label class="fl" style="margin:0">Lead :</label><select class="f" id="pLead" style="width:200px">${(DB.artistes||[]).map(a=>{const link=(DB.projArt[id]||[]).find(x=>x.artiste_id===a.id);return `<option value="${a.id}" ${link&&link.lead?'selected':''}>${esc(a.nom)}</option>`;}).join('')}</select>
+    <input class="f" id="pNewArtiste" placeholder="Nouvel artiste…" style="width:180px"><button class="btn sm" onclick="addArtiste(${id})">＋ Artiste</button></div>
+    <label class="fl" style="margin-top:12px">Pitch commercial (modifiable avant chaque envoi)</label>
     <textarea class="f" id="pPitch" style="height:56px">${esc(p.pitch||'')}</textarea>
     <div class="sec-t">🤝 Deal — alimente automatiquement commissions & objectifs</div>
     <div class="fgrid3">
@@ -867,8 +1018,20 @@ async function saveProjet(id){
       nom:div.querySelector('.in2').value.trim()||'—',email:div.querySelector('.ie').value.trim()||null,
       copie_confirmation:div.querySelector('.icc').checked}).eq('id',+div.dataset.iid);
   }
+  // artistes du projet
+  const selArts=[...document.querySelectorAll('.chip.partiste.on')].map(c=>+c.dataset.a);
+  const leadId=+document.getElementById('pLead').value;
+  await sb.from('projet_artistes').delete().eq('projet_id',id);
+  for(const aid of selArts){await sb.from('projet_artistes').insert({projet_id:id,artiste_id:aid,lead:aid===leadId});}
   if(e1||e2){toast('Erreur : '+((e1||e2).message),true);return;}
   toast('✓ Projet enregistré'); closeModal(); await loadProjets();
+}
+async function addArtiste(pid){
+  const nom=document.getElementById('pNewArtiste').value.trim();
+  if(!nom){toast('Nom requis',true);return;}
+  const {error}=await sb.from('artistes').insert({nom});
+  if(error){toast(error.message,true);return;}
+  toast('✓ Artiste « '+nom+' » créé — clique sa puce pour le lier'); await loadProjets(); openProjet(pid);
 }
 async function addMusicien(pid){
   const nom=document.getElementById('nmNom').value.trim();
