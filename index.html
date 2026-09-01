@@ -138,6 +138,7 @@
   </div>
 
   <div class="wrap">
+    <div class="card" id="loadErr" style="display:none;border-color:var(--red)"><b>⚠️ Les données n'ont pas pu être chargées.</b> <span class="mini">Problème de connexion ou session à renouveler.</span> <button class="btn sm primary" onclick="location.reload()">🔄 Réessayer</button></div>
     <div id="v-annuaire">
       <div class="kpis" id="kpis"></div>
       <div class="card">
@@ -147,7 +148,8 @@
           <div><label class="fl">Esthétique</label><select class="f" id="fEsth" onchange="renderList()" style="width:140px"></select></div>
           <div><label class="fl">Région</label><select class="f" id="fReg" onchange="renderList()" style="width:170px"></select></div>
           <div><label class="fl">Jauge min.</label><select class="f" id="fJauge" onchange="renderList()" style="width:100px"><option value="0">—</option><option>100</option><option>200</option><option>400</option><option>600</option><option>800</option></select></div>
-          <div><label class="fl">Qualif.</label><select class="f" id="fQualif" onchange="renderList()" style="width:110px"><option value="">Toutes</option><option>Client</option><option>Prospect</option></select></div>
+          <div><label class="fl">Qualif.</label><select class="f" id="fQualif" onchange="renderList()" style="width:125px"><option value="">Actives</option><option>Client ++</option><option>Client</option><option>Prospect</option><option>Archivé</option><option>Blacklist</option></select></div>
+          <div style="align-self:flex-end"><div class="flex" style="gap:7px"><button class="btn sm primary" onclick="openNewStruct('Prospect')">＋ Prospect</button><button class="btn sm primary" onclick="openNewStruct('Client')">＋ Client</button></div></div>
         </div>
         <div class="flex wrap-f" style="gap:20px;margin-top:12px">
           <div><label class="fl">🎪 Diffusion en</label><div class="month-grid" id="fDiff"></div></div>
@@ -164,7 +166,7 @@
     </div>
 
     <div id="v-projets" style="display:none">
-      <div class="card"><b>🎷 Projets & deals</b>
+      <div class="card"><div class="flex between center wrap-f" style="margin-bottom:4px"><b>🎷 Projets & deals</b><button class="btn sm primary" onclick="openNewProjet()">＋ Projet</button></div>
         <p class="mini" style="margin-top:6px">Fiche centrale de chaque projet : deal (taux de commission propre, défaut 12 %), line-up officiel avec cachet réel par musicien, intervenants avec rôles libres, intérêt stratégique.</p></div>
       <div class="card"><div class="scroll-y"><table>
         <thead><tr><th>Projet</th><th>Artiste(s)</th><th>Esthétique</th><th>Taux comm.</th><th>Line-up</th><th>Total cachets</th><th>Intérêts stratégiques</th></tr></thead>
@@ -270,10 +272,13 @@ async function init(){
   if(!session){document.getElementById('loginView').style.display='block';return;}
   document.getElementById('appView').style.display='block';
   document.getElementById('userEmail').textContent=session.user.email;
-  await loadAll();
-  await loadProjets();
-  await loadDates();
-  await loadBillet();
+  let ok=false;
+  for(let i=0;i<3&&!ok;i++){
+    if(i)await new Promise(r=>setTimeout(r,1200*i));
+    ok=(await loadAll())&&(await loadProjets())&&(await loadDates())&&(await loadBillet());
+  }
+  const le=document.getElementById('loadErr');
+  if(le)le.style.display=ok?'none':'block';
 }
 async function doLogin(){
   const email=document.getElementById('liEmail').value.trim(), pass=document.getElementById('liPass').value;
@@ -294,7 +299,7 @@ async function loadAll(){
     sb.from('dates').select('id,date_spectacle,lieu_texte,ville_texte,projet_id').is('lieu_id',null).order('date_spectacle'),
     sb.from('projets').select('id,nom')
   ]);
-  for(const r of [lt,es,lx,sp,jg,ct,dt,pj]) if(r.error){toast('Erreur chargement : '+r.error.message,true);return;}
+  for(const r of [lt,es,lx,sp,jg,ct,dt,pj]) if(r.error){toast('Erreur chargement : '+r.error.message,true);return false;}
   DB.types=lt.data; DB.esths=es.data; DB.lieux=lx.data;
   DB.porteuses={}; sp.data.forEach(s=>DB.porteuses[s.id]=s);
   DB.jauges={}; jg.data.forEach(j=>{(DB.jauges[j.lieu_id]=DB.jauges[j.lieu_id]||[]).push(j);});
@@ -302,6 +307,7 @@ async function loadAll(){
   DB.datesOrphelines=dt.data;
   DB.projets={}; pj.data.forEach(p=>DB.projets[p.id]=p.nom);
   buildFilters(); renderKpis(); renderList(); renderRappro();
+  return true;
 }
 function buildFilters(){
   document.getElementById('fType').innerHTML='<option value="">Toutes</option>'+DB.types.map(t=>`<option value="${t.id}">${esc(t.nom)}</option>`).join('');
@@ -346,7 +352,9 @@ function renderList(){
     if(es && !(l.esthetiques||[]).includes(es)) return false;
     if(rg && l.region!==rg) return false;
     if(jm){const mj=lieuMaxJauge(l); if(!mj||mj<jm) return false;}
-    if(qf && (sp.qualif||'Prospect')!==qf) return false;
+    if(qf==='Archivé'){if(!sp.archive)return false;}
+    else if(qf==='Blacklist'){if(!sp.blacklist)return false;}
+    else{if(sp.archive||sp.blacklist)return false;if(qf && (sp.qualif||'Prospect')!==qf)return false;}
     if(filtDiff.size && ![...filtDiff].some(m=>(l.diffusion_mois||[]).includes(m))) return false;
     if(filtProg.size && ![...filtProg].some(m=>(l.programmation_mois||[]).includes(m))) return false;
     return true;
@@ -358,12 +366,12 @@ function renderList(){
     return `<tr class="clik" onclick="openLieu(${l.id})">
       <td class="row-strong">${esc(l.nom)}</td>
       <td class="mini">${esc(typeName(l.type_id))}</td>
-      <td>${esthNames(l.esthetiques).map(n=>`<span class="pill c">${esc(n)}</span>`).join(' ')||'<span class="mini">—</span>'}</td>
+      <td>${esthNames(l.esthetiques).map(n=>`<span class="pill c">${esc(n)}</span>`).join(' ')||'<span class="mini">Non renseigné</span>'}</td>
       <td>${esc(l.ville||'—')} <span class="mini">(${esc(l.departement||'—')})</span></td>
       <td class="mini">${js.length?js.map(j=>j.capacite+' '+j.label).join(' · '):'à renseigner'}</td>
       <td class="mini">${moisLabel(l.diffusion_mois)}</td>
       <td class="mini">${moisLabel(l.programmation_mois)}</td>
-      <td><span class="pill ${sp.qualif==='Client'?'g':'b'}">${esc(sp.qualif||'Prospect')}</span></td></tr>`;
+      <td>${sp.blacklist?'<span class="pill r">🚫 Blacklist</span>':sp.archive?'<span class="pill m">Archivé</span>':`<span class="pill ${sp.qualif&&sp.qualif.startsWith('Client')?'g':'b'}">${sp.qualif==='Client ++'?'★ ':''}${esc(sp.qualif||'Prospect')}</span>`}</td></tr>`;
   }).join('');
 }
 
@@ -417,7 +425,7 @@ function openLieu(id){
     <div class="fgrid3">
       <div><label class="fl">Raison sociale</label><input class="f" id="sNom" value="${esc(sp.nom||'')}"></div>
       <div><label class="fl">Forme juridique</label><input class="f" id="sForme" value="${esc(sp.forme_juridique||'')}" placeholder="association, SAS, mairie…"></div>
-      <div><label class="fl">Qualification</label><select class="f" id="sQualif"><option ${sp.qualif==='Prospect'?'selected':''}>Prospect</option><option ${sp.qualif==='Client'?'selected':''}>Client</option></select></div>
+      <div><label class="fl">Qualification</label><select class="f" id="sQualif"><option ${sp.qualif==='Prospect'?'selected':''}>Prospect</option><option ${sp.qualif==='Client'?'selected':''}>Client</option><option ${sp.qualif==='Client ++'?'selected':''}>Client ++</option></select></div>
       <div><label class="fl">Signataire</label><input class="f" id="sSign" value="${esc(sp.signataire||'')}"></div>
       <div><label class="fl">Qualité du signataire</label><input class="f" id="sQual" value="${esc(sp.qualite_signataire||'')}" placeholder="Président, Directeur…"></div>
       <div><label class="fl">SIRET</label><input class="f" id="sSiret" value="${esc(sp.siret||'')}"></div>
@@ -425,8 +433,120 @@ function openLieu(id){
       <div><label class="fl">Licence(s)</label><input class="f" id="sLic" value="${esc((sp.licences||[]).join(', '))}" placeholder="séparées par des virgules"></div>
       <div><label class="fl">TVA intracom.</label><input class="f" id="sTva" value="${esc(sp.tva_intra||'')}"></div>
     </div>
+    ${sp.id?`<div class="sec-t">⚙️ Gestion de la fiche</div>
+    ${sp.blacklist?`<p class="mini" style="color:var(--red)">🚫 Blacklistée${sp.blacklist_motif?' — motif : '+esc(sp.blacklist_motif):''}</p>`:''}
+    <div class="flex wrap-f" style="gap:7px">
+      ${sp.archive?`<button class="btn sm" onclick="setArchive(${sp.id},false,${l.id})">↩️ Restaurer</button>`:`<button class="btn sm" onclick="setArchive(${sp.id},true,${l.id})">🗂️ Archiver</button>`}
+      ${sp.blacklist?`<button class="btn sm" onclick="setBlacklist(${sp.id},false,${l.id})">↩️ Retirer de la blacklist</button>`:`<button class="btn sm danger" onclick="setBlacklist(${sp.id},true,${l.id})">🚫 Blacklister</button>`}
+      <button class="btn sm danger" onclick="deleteStructDef(${sp.id},${l.id})">🗑️ Supprimer définitivement</button>
+    </div>`:''}
   </div>`;
   document.getElementById('overlay').classList.add('open');
+}
+async function setArchive(spId,flag,lieuId){
+  const {error}=await sb.from('structures_porteuses').update({archive:flag}).eq('id',spId);
+  if(error){toast(error.message,true);return;}
+  toast(flag?'🗂️ Fiche archivée — retrouvable via le filtre « Archivé »':'✓ Fiche restaurée');
+  closeModal(); await loadAll();
+}
+async function setBlacklist(spId,flag,lieuId){
+  let motif=null;
+  if(flag){motif=prompt('Motif de blacklist (optionnel) :')||null;}
+  const {error}=await sb.from('structures_porteuses').update({blacklist:flag,blacklist_motif:motif}).eq('id',spId);
+  if(error){toast(error.message,true);return;}
+  toast(flag?'🚫 Fiche blacklistée — exclue de la prospection':'✓ Retirée de la blacklist');
+  closeModal(); await loadAll();
+}
+async function deleteStructDef(spId,lieuId){
+  if(!confirm('Supprimer DÉFINITIVEMENT cette fiche (structure + lieu + contacts) ?\nCette action est irréversible. Préférez « Archiver » en cas de doute.'))return;
+  if(!confirm('Dernière confirmation : suppression définitive ?'))return;
+  await sb.from('lieux').delete().eq('structure_porteuse_id',spId);
+  const {error}=await sb.from('structures_porteuses').delete().eq('id',spId);
+  if(error){toast(error.message,true);return;}
+  toast('🗑️ Fiche supprimée définitivement'); closeModal(); await loadAll();
+}
+
+/* ===== LOT A : CRÉATION MANUELLE + ANTI-DOUBLONS ===== */
+function findDoublons(nom,email,tel,ville){
+  const nn=norm(nom), ne=(email||'').toLowerCase().trim(), nt=(tel||'').replace(/\D/g,''), nv=norm(ville);
+  return DB.lieux.map(l=>{
+    const sp=DB.porteuses[l.structure_porteuse_id]||{};
+    let why=[];
+    const ln=norm(l.nom), lspn=norm(sp.nom||'');
+    if(nn&&nn.length>3&&(ln.includes(nn)||nn.includes(ln)||lspn.includes(nn)))why.push('nom similaire');
+    if(ne&&((l.email||'').toLowerCase()===ne||(sp.email||'').toLowerCase()===ne))why.push('même email');
+    if(nt&&nt.length>=8&&((l.telephone||'').replace(/\D/g,'')===nt||(sp.telephone||'').replace(/\D/g,'')===nt))why.push('même téléphone');
+    if(nv&&why.length&&norm(l.ville||'')===nv)why.push('même ville');
+    return {l,why};
+  }).filter(x=>x.why.length).slice(0,5);
+}
+function openNewStruct(qualif){
+  document.getElementById('modal').innerHTML=`
+  <div class="modal-h"><span style="font-size:20px">${qualif==='Client'?'🤝':'🎯'}</span><h3>Ajouter un ${qualif.toLowerCase()}</h3><button class="btn sm" onclick="closeModal()">✕</button></div>
+  <div class="modal-b">
+    <div class="fgrid">
+      <div><label class="fl">Nom de la structure / lieu *</label><input class="f" id="nsNom"></div>
+      <div><label class="fl">Ville</label><input class="f" id="nsVille"></div>
+      <div><label class="fl">Email</label><input class="f" id="nsEmail"></div>
+      <div><label class="fl">Téléphone</label><input class="f" id="nsTel"></div>
+      <div><label class="fl">Typologie</label><select class="f" id="nsType">${DB.types.map(t=>`<option value="${t.id}">${esc(t.nom)}</option>`).join('')}</select></div>
+      <div><label class="fl">Région</label><input class="f" id="nsReg"></div>
+    </div>
+    <div id="nsDoublons"></div>
+    <button class="btn primary" onclick="checkAndCreateStruct('${qualif}')">💾 Créer la fiche</button>
+    <p class="mini" style="margin-top:8px">Création rapide — tu pourras compléter la fiche ensuite (contacts, jauges, périodes…).</p>
+  </div>`;
+  document.getElementById('overlay').classList.add('open');
+}
+async function checkAndCreateStruct(qualif,force){
+  const g=x=>document.getElementById(x).value.trim();
+  const nom=g('nsNom');
+  if(!nom){toast('Le nom est obligatoire',true);return;}
+  if(!force){
+    const dbl=findDoublons(nom,g('nsEmail'),g('nsTel'),g('nsVille'));
+    if(dbl.length){
+      document.getElementById('nsDoublons').innerHTML=`<div class="card" style="border-color:var(--amber);padding:11px;margin-bottom:11px">
+        <b>⚠️ Cette structure semble déjà exister :</b>
+        ${dbl.map(x=>`<div class="flex between center" style="padding:6px 0"><span>${esc(x.l.nom)} <span class="mini">(${esc(x.l.ville||'—')}) — ${x.why.join(', ')}</span></span><button class="btn sm" onclick="closeModal();openLieu(${x.l.id})">Ouvrir</button></div>`).join('')}
+        <button class="btn sm" style="margin-top:6px" onclick="checkAndCreateStruct('${qualif}',true)">Créer quand même une nouvelle fiche</button></div>`;
+      return;
+    }
+  }
+  const {data:sp,error:e1}=await sb.from('structures_porteuses').insert({nom,ville:g('nsVille')||null,email:g('nsEmail')||null,telephone:g('nsTel')||null,qualif}).select().single();
+  if(e1){toast(e1.message,true);return;}
+  const {data:li,error:e2}=await sb.from('lieux').insert({structure_porteuse_id:sp.id,nom,ville:g('nsVille')||null,email:g('nsEmail')||null,telephone:g('nsTel')||null,type_id:+document.getElementById('nsType').value||null,region:g('nsReg')||null}).select().single();
+  if(e2){toast(e2.message,true);return;}
+  toast('✓ '+qualif+' « '+nom+' » créé');
+  await loadAll(); openLieu(li.id);
+}
+function openNewProjet(){
+  document.getElementById('modal').innerHTML=`
+  <div class="modal-h"><span style="font-size:20px">🎷</span><h3>Ajouter un projet</h3><button class="btn sm" onclick="closeModal()">✕</button></div>
+  <div class="modal-b">
+    <div class="fgrid">
+      <div><label class="fl">Nom du projet *</label><input class="f" id="npNom2"></div>
+      <div><label class="fl">Esthétique</label><select class="f" id="npEsth"><option value="">—</option>${DB.esths.map(e=>`<option value="${e.id}">${esc(e.nom)}</option>`).join('')}</select></div>
+      <div><label class="fl">Artiste (lead)</label><select class="f" id="npArt"><option value="">— aucun —</option>${(DB.artistes||[]).map(a=>`<option value="${a.id}">${esc(a.nom)}</option>`).join('')}</select></div>
+      <div><label class="fl">…ou nouvel artiste</label><input class="f" id="npArtNew" placeholder="Nom du nouvel artiste"></div>
+    </div>
+    <button class="btn primary" onclick="createProjet()">💾 Créer le projet</button>
+    <p class="mini" style="margin-top:8px">Le deal démarre à 12 % (modifiable dans la fiche). Line-up, pitch et objectifs à compléter ensuite.</p>
+  </div>`;
+  document.getElementById('overlay').classList.add('open');
+}
+async function createProjet(){
+  const nom=document.getElementById('npNom2').value.trim();
+  if(!nom){toast('Le nom est obligatoire',true);return;}
+  if((DB.projList||[]).some(p=>norm(p.nom)===norm(nom))){toast('⚠️ Un projet porte déjà ce nom',true);return;}
+  const {data:pj,error:e1}=await sb.from('projets').insert({nom,esthetique_id:+document.getElementById('npEsth').value||null}).select().single();
+  if(e1){toast(e1.message,true);return;}
+  await sb.from('deals').insert({projet_id:pj.id});
+  let artId=+document.getElementById('npArt').value||null;
+  const artNew=document.getElementById('npArtNew').value.trim();
+  if(artNew){const {data:a}=await sb.from('artistes').insert({nom:artNew}).select().single();if(a)artId=a.id;}
+  if(artId)await sb.from('projet_artistes').insert({projet_id:pj.id,artiste_id:artId,lead:true});
+  toast('✓ Projet « '+nom+' » créé');
+  await loadProjets(); switchTab('projets'); openProjet(pj.id);
 }
 function closeModal(){document.getElementById('overlay').classList.remove('open');}
 function getMonths(el){return [...document.querySelectorAll('#'+el+' .chip.on')].map(c=>+c.dataset.m);}
@@ -514,9 +634,10 @@ function switchTab(v){
 /* ========== LOT 7 : BILLETTERIE ========== */
 async function loadBillet(){
   const [pt,pr]=await Promise.all([sb.from('pointages').select('*').order('date_pointage'),sb.from('params_relances').select('*').order('seuil_jours',{ascending:false})]);
-  if(pt.error||pr.error){toast('Erreur billetterie : '+(pt.error||pr.error).message,true);return;}
+  if(pt.error||pr.error){toast('Erreur billetterie : '+(pt.error||pr.error).message,true);return false;}
   DB.pointages={}; pt.data.forEach(p=>{(DB.pointages[p.date_id]=DB.pointages[p.date_id]||[]).push(p);});
   DB.relances=pr.data;
+  return true;
 }
 function todayIso(){return new Date().toISOString().slice(0,10);}
 function daysBetween(a,b){return Math.round((new Date(b)-new Date(a))/864e5);}
@@ -754,10 +875,11 @@ function saisonOf(iso){const y=+iso.slice(0,4),m=+iso.slice(5,7);const a=m>=9?y:
 function commOf(d){const p=(DB.projList||[]).find(x=>x.id===d.projet_id);const dl=p?DB.deals[p.id]:null;return Math.round((+d.prix_cession||0)*(dl?.taux_commission??0.12));}
 async function loadDates(){
   const [dt,dlu]=await Promise.all([sb.from('dates').select('*').order('date_spectacle'),sb.from('date_lineup').select('*')]);
-  if(dt.error||dlu.error){toast('Erreur dates : '+(dt.error||dlu.error).message,true);return;}
+  if(dt.error||dlu.error){toast('Erreur dates : '+(dt.error||dlu.error).message,true);return false;}
   DB.datesAll=dt.data;
   DB.dateLineup={}; dlu.data.forEach(m=>{(DB.dateLineup[m.date_id]=DB.dateLineup[m.date_id]||[]).push(m);});
   fillDateFilters(); renderDates();
+  return true;
 }
 function fillDateFilters(){
   document.getElementById('dfProj').innerHTML='<option value="">Tous les projets</option>'+(DB.projList||[]).map(p=>`<option value="${p.id}">${esc(p.nom)}</option>`).join('');
@@ -866,7 +988,7 @@ async function saveDate(id){
       remplacant:div.querySelector('.mr2').checked}).eq('id',+div.dataset.mid);
   }
   if(error){toast('Erreur : '+error.message,true);return;}
-  toast('✓ Date enregistrée'); closeModal(); await loadDates();
+  toast('✓ Date enregistrée'); closeModal(); await loadDates(); await loadAll();
 }
 async function addDateMus(dateId){
   const nom=document.getElementById('dmNom').value.trim();
@@ -910,7 +1032,7 @@ async function loadProjets(){
     sb.from('projet_documents').select('*'),
     sb.from('dates').select('id,projet_id')
   ]);
-  for(const r of [pj,dl,lu,iv,rl,pa,ar,dc,dt]) if(r.error){toast('Erreur projets : '+r.error.message,true);return;}
+  for(const r of [pj,dl,lu,iv,rl,pa,ar,dc,dt]) if(r.error){toast('Erreur projets : '+r.error.message,true);return false;}
   DB.projList=pj.data;
   DB.deals={}; dl.data.forEach(d=>DB.deals[d.projet_id]=d);
   DB.lineup={}; lu.data.forEach(l=>{(DB.lineup[l.projet_id]=DB.lineup[l.projet_id]||[]).push(l);});
@@ -921,6 +1043,7 @@ async function loadProjets(){
   DB.docs={}; dc.data.forEach(d=>{(DB.docs[d.projet_id]=DB.docs[d.projet_id]||[]).push(d);});
   DB.datesCount={}; dt.data.forEach(d=>DB.datesCount[d.projet_id]=(DB.datesCount[d.projet_id]||0)+1);
   renderProjets();
+  return true;
 }
 function artNames(pid){return (DB.projArt[pid]||[]).map(x=>{const a=DB.artistes.find(y=>y.id===x.artiste_id);return a?(x.lead?'⭐ ':'')+a.nom:null;}).filter(Boolean).join(', ');}
 function totCachets(pid){return (DB.lineup[pid]||[]).reduce((s,m)=>s+(+m.cachet||0),0);}
