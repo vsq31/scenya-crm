@@ -147,7 +147,8 @@
           <div><label class="fl">Typologie</label><select class="f" id="fType" onchange="renderList()" style="width:150px"></select></div>
           <div><label class="fl">Esthétique</label><select class="f" id="fEsth" onchange="renderList()" style="width:140px"></select></div>
           <div><label class="fl">Région</label><select class="f" id="fReg" onchange="renderList()" style="width:170px"></select></div>
-          <div><label class="fl">Jauge min.</label><select class="f" id="fJauge" onchange="renderList()" style="width:100px"><option value="0">—</option><option>100</option><option>200</option><option>400</option><option>600</option><option>800</option></select></div>
+          <div><label class="fl">Jauge de</label><input class="f" id="fJmin" type="number" placeholder="min" oninput="renderList()" style="width:80px"></div>
+          <div><label class="fl">à</label><input class="f" id="fJmax" type="number" placeholder="max" oninput="renderList()" style="width:80px"></div>
           <div><label class="fl">Qualif.</label><select class="f" id="fQualif" onchange="renderList()" style="width:125px"><option value="">Actives</option><option>Client ++</option><option>Client</option><option>Prospect</option><option>Archivé</option><option>Blacklist</option></select></div>
           <div style="align-self:flex-end"><div class="flex" style="gap:7px"><button class="btn sm primary" onclick="openNewStruct('Prospect')">＋ Prospect</button><button class="btn sm primary" onclick="openNewStruct('Client')">＋ Client</button></div></div>
         </div>
@@ -272,6 +273,7 @@ async function init(){
   if(!session){document.getElementById('loginView').style.display='block';return;}
   document.getElementById('appView').style.display='block';
   document.getElementById('userEmail').textContent=session.user.email;
+  window.USER=(session.user.email||'').split('@')[0];
   let ok=false;
   for(let i=0;i<3&&!ok;i++){
     if(i)await new Promise(r=>setTimeout(r,1200*i));
@@ -331,6 +333,28 @@ function renderKpis(){
     <div class="kpi"><div class="v">${Object.values(DB.contacts).flat().length}</div><div class="l">👥 Contacts typés</div></div>
     <div class="kpi"><div class="v">${DB.datesOrphelines.length}</div><div class="l">🔗 Dates à rattacher</div></div>`;
 }
+/* Complétude de fiche — critères évolutifs (LOT B) */
+const COMPLETUDE=[
+ ['Nom structure',(l,sp)=>!!(sp&&sp.nom)],
+ ['Nom du programmateur',(l)=>((DB.contacts[l.id]||[]).some(c=>c.type==='programmation'&&c.nom))],
+ ['Email de contact',(l,sp)=>((DB.contacts[l.id]||[]).some(c=>c.email))||!!(l.email||(sp&&sp.email))],
+ ['Téléphone',(l,sp)=>((DB.contacts[l.id]||[]).some(c=>c.portable||c.telephone))||!!(l.telephone||(sp&&sp.telephone))],
+ ['Typologie',(l)=>!!l.type_id],
+ ['Région',(l)=>!!l.region],
+ ['Esthétique',(l)=>(l.esthetiques||[]).length>0],
+ ['Période de programmation',(l)=>(l.programmation_mois||[]).length>0],
+ ['Période de diffusion',(l)=>(l.diffusion_mois||[]).length>0],
+ ['Jauge',(l)=>(DB.jauges[l.id]||[]).length>0]
+];
+function completude(l){
+  const sp=DB.porteuses[l.structure_porteuse_id]||null;
+  const manque=COMPLETUDE.filter(([n,f])=>!f(l,sp)).map(([n])=>n);
+  const ok=COMPLETUDE.length-manque.length;
+  const c=ok>=8?'g':ok>=4?'a':'r';
+  return {ok,total:COMPLETUDE.length,c,manque};
+}
+function compDot(l){const cp=completude(l);const col=cp.c==='g'?'var(--green)':cp.c==='a'?'var(--amber)':'var(--red)';
+  return `<span title="Complétude ${cp.ok}/${cp.total}${cp.manque.length?' — manque : '+cp.manque.join(', '):''}" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${col};margin-right:7px;vertical-align:middle"></span>`;}
 function lieuMaxJauge(l){const js=DB.jauges[l.id]||[];return js.length?Math.max(...js.map(j=>j.capacite)):null;}
 function typeName(id){const t=DB.types.find(x=>x.id===id);return t?t.nom:'—';}
 function esthNames(ids){return (ids||[]).map(i=>{const e=DB.esths.find(x=>x.id===i);return e?e.nom:null;}).filter(Boolean);}
@@ -342,7 +366,8 @@ function renderList(){
   const ty=+document.getElementById('fType').value||0;
   const es=+document.getElementById('fEsth').value||0;
   const rg=document.getElementById('fReg').value;
-  const jm=+document.getElementById('fJauge').value||0;
+  const jmin=+document.getElementById('fJmin').value||0;
+  const jmax=+document.getElementById('fJmax').value||0;
   const qf=document.getElementById('fQualif').value;
   let rows=DB.lieux.filter(l=>{
     const sp=DB.porteuses[l.structure_porteuse_id]||{};
@@ -351,7 +376,7 @@ function renderList(){
     if(ty && l.type_id!==ty) return false;
     if(es && !(l.esthetiques||[]).includes(es)) return false;
     if(rg && l.region!==rg) return false;
-    if(jm){const mj=lieuMaxJauge(l); if(!mj||mj<jm) return false;}
+    if(jmin||jmax){const mj=lieuMaxJauge(l); if(!mj) return false; if(jmin&&mj<jmin) return false; if(jmax&&mj>jmax) return false;}
     if(qf==='Archivé'){if(!sp.archive)return false;}
     else if(qf==='Blacklist'){if(!sp.blacklist)return false;}
     else{if(sp.archive||sp.blacklist)return false;if(qf && (sp.qualif||'Prospect')!==qf)return false;}
@@ -364,7 +389,7 @@ function renderList(){
     const sp=DB.porteuses[l.structure_porteuse_id]||{};
     const js=DB.jauges[l.id]||[];
     return `<tr class="clik" onclick="openLieu(${l.id})">
-      <td class="row-strong">${esc(l.nom)}</td>
+      <td class="row-strong">${compDot(l)}${esc(l.nom)}</td>
       <td class="mini">${esc(typeName(l.type_id))}</td>
       <td>${esthNames(l.esthetiques).map(n=>`<span class="pill c">${esc(n)}</span>`).join(' ')||'<span class="mini">Non renseigné</span>'}</td>
       <td>${esc(l.ville||'—')} <span class="mini">(${esc(l.departement||'—')})</span></td>
@@ -376,14 +401,16 @@ function renderList(){
 }
 
 /* ---------- FICHE LIEU + STRUCTURE ---------- */
-function openLieu(id){
+async function openLieu(id){
   const l=DB.lieux.find(x=>x.id===id); if(!l)return;
+  const notesL=await fetchNotes('structure',id);
+  const cp=completude(l);
   const sp=DB.porteuses[l.structure_porteuse_id]||{};
   const js=DB.jauges[l.id]||[];
   const cts=(DB.contacts[l.id]||[]).concat(DB.contacts['s'+l.structure_porteuse_id]||[]);
   const mkMonths=(field,arr)=>MOIS.map((m,i)=>`<span class="chip ${(arr||[]).includes(i+1)?'on':''}" onclick="this.classList.toggle('on')" data-f="${field}" data-m="${i+1}">${m}</span>`).join('');
   document.getElementById('modal').innerHTML=`
-  <div class="modal-h"><span style="font-size:20px">🎪</span><div><h3>${esc(l.nom)}</h3><span class="mini">portée par : ${esc(sp.nom||'—')}</span></div>
+  <div class="modal-h"><span style="font-size:20px">🎪</span><div><h3>${compDot(l)}${esc(l.nom)}</h3><span class="mini">portée par : ${esc(sp.nom||'—')} · complétude ${cp.ok}/${cp.total}${cp.manque.length?' — à compléter : '+esc(cp.manque.slice(0,4).join(', '))+(cp.manque.length>4?'…':''):' ✓'}</span></div>
     <button class="btn sm primary" onclick="saveLieu(${l.id})">💾 Enregistrer</button><button class="btn sm" onclick="closeModal()">✕</button></div>
   <div class="modal-b">
     <div class="sec-t">🎪 Lieu / festival / événement</div>
@@ -410,7 +437,9 @@ function openLieu(id){
     <input class="f" id="mProgDetail" value="${esc(l.programmation_detail||'')}" placeholder="Précision libre…" style="margin-top:7px">
     <div class="sec-t">🎟️ Jauges / configurations</div>
     <div id="mJauges">${js.map(j=>`<div class="flex center" style="gap:8px;margin-bottom:6px" data-jid="${j.id}"><input class="f jl" value="${esc(j.label)}" style="width:160px"><input class="f jc" type="number" value="${j.capacite}" style="width:110px"><button class="btn sm danger" onclick="delJauge(${j.id},this)">✕</button></div>`).join('')}</div>
-    <div class="flex center" style="gap:8px"><input class="f" id="njLabel" placeholder="assis / debout / totale…" style="width:160px"><input class="f" id="njCap" type="number" placeholder="capacité" style="width:110px"><button class="btn sm" onclick="addJauge(${l.id})">＋ Ajouter</button></div>
+    <div class="flex center" style="gap:8px"><input class="f" id="njLabel" placeholder="assis / debout / totale…" style="width:160px"><input class="f" id="njCap" type="number" placeholder="capacité" style="width:110px"><button class="btn sm" onclick="addJauge(${l.id})">＋ Ajouter</button>
+      <span class="mini" style="margin:0 4px">ou fourchette :</span>
+      <input class="f" id="njMin" type="number" placeholder="de" style="width:80px"><input class="f" id="njMax" type="number" placeholder="à" style="width:80px"><button class="btn sm" onclick="addFourchette(${l.id})">＋ Fourchette</button></div>
     <div class="sec-t">👥 Contacts spécialisés</div>
     <div id="mContacts">${cts.map(c=>`<div class="flex center" style="gap:7px;margin-bottom:6px" data-cid="${c.id}">
       <span style="width:22px;text-align:center">${CT_ICON[c.type]||'👤'}</span>
@@ -440,6 +469,7 @@ function openLieu(id){
       ${sp.blacklist?`<button class="btn sm" onclick="setBlacklist(${sp.id},false,${l.id})">↩️ Retirer de la blacklist</button>`:`<button class="btn sm danger" onclick="setBlacklist(${sp.id},true,${l.id})">🚫 Blacklister</button>`}
       <button class="btn sm danger" onclick="deleteStructDef(${sp.id},${l.id})">🗑️ Supprimer définitivement</button>
     </div>`:''}
+    ${notesHtml('structure',id,notesL)}
   </div>`;
   document.getElementById('overlay').classList.add('open');
 }
@@ -548,6 +578,26 @@ async function createProjet(){
   toast('✓ Projet « '+nom+' » créé');
   await loadProjets(); switchTab('projets'); openProjet(pj.id);
 }
+/* Notes horodatées avec auteur (LOT B) */
+async function fetchNotes(entite,id){
+  const {data,error}=await sb.from('notes').select('*').eq('entite',entite).eq('entite_id',id).order('created_at',{ascending:false});
+  return error?[]:data;
+}
+function notesHtml(entite,id,list){
+  return `<div class="sec-t">📝 Notes & commentaires</div>
+  <div class="flex" style="gap:7px;margin-bottom:9px"><input class="f" id="noteTxt" placeholder="Écrire une note… (auteur : ${esc(window.USER||'moi')})" onkeydown="if(event.key==='Enter')addNote('${entite}',${id})" style="flex:1"><button class="btn sm primary" onclick="addNote('${entite}',${id})">＋ Note</button></div>
+  <div id="notesList">${list.map(n=>`<div style="padding:7px 0;border-bottom:1px solid var(--line)"><span class="mini"><b>${esc(n.auteur||'—')}</b> · ${(n.created_at||'').slice(0,16).replace('T',' ')}</span><div style="font-size:13px;margin-top:2px">${esc(n.contenu)}</div></div>`).join('')||'<span class="mini">Aucune note pour l\'instant.</span>'}</div>`;
+}
+async function addNote(entite,id){
+  const txt=document.getElementById('noteTxt').value.trim();
+  if(!txt){toast('Note vide',true);return;}
+  const {error}=await sb.from('notes').insert({entite,entite_id:id,auteur:window.USER||null,contenu:txt});
+  if(error){toast(error.message,true);return;}
+  toast('✓ Note ajoutée');
+  const list=await fetchNotes(entite,id);
+  document.getElementById('noteTxt').value='';
+  document.getElementById('notesList').innerHTML=list.map(n=>`<div style="padding:7px 0;border-bottom:1px solid var(--line)"><span class="mini"><b>${esc(n.auteur||'—')}</b> · ${(n.created_at||'').slice(0,16).replace('T',' ')}</span><div style="font-size:13px;margin-top:2px">${esc(n.contenu)}</div></div>`).join('');
+}
 function closeModal(){document.getElementById('overlay').classList.remove('open');}
 function getMonths(el){return [...document.querySelectorAll('#'+el+' .chip.on')].map(c=>+c.dataset.m);}
 async function saveLieu(id){
@@ -582,6 +632,13 @@ async function addJauge(lieuId){
   const {error}=await sb.from('jauges').insert({lieu_id:lieuId,label:lab,capacite:cap});
   if(error){toast(error.message,true);return;}
   toast('✓ Jauge ajoutée'); await loadAll(); openLieu(lieuId);
+}
+async function addFourchette(lieuId){
+  const mn=+document.getElementById('njMin').value,mx=+document.getElementById('njMax').value;
+  if(!mn||!mx||mx<mn){toast('Fourchette invalide (de < à)',true);return;}
+  await sb.from('jauges').insert({lieu_id:lieuId,label:'mini',capacite:mn});
+  await sb.from('jauges').insert({lieu_id:lieuId,label:'maxi',capacite:mx});
+  toast('✓ Fourchette '+mn+' → '+mx+' enregistrée'); await loadAll(); openLieu(lieuId);
 }
 async function delJauge(id,btn){await sb.from('jauges').delete().eq('id',id);btn.closest('[data-jid]').remove();toast('Jauge supprimée');}
 async function addContact(lieuId,spId){
@@ -1060,8 +1117,9 @@ function renderProjets(){
       <td>${(p.interets_strategiques||[]).map(i=>`<span class="pill m">${esc(i)}</span>`).join(' ')||'<span class="mini">—</span>'}</td></tr>`;
   }).join('');
 }
-function openProjet(id){
+async function openProjet(id){
   const p=(DB.projList||[]).find(x=>x.id===id); if(!p)return;
+  const notesP=await fetchNotes('projet',id);
   const d=DB.deals[id]||{};const lu=DB.lineup[id]||[];const iv=DB.interv[id]||[];const dc=DB.docs[id]||[];
   document.getElementById('modal').innerHTML=`
   <div class="modal-h"><span style="font-size:20px">🎷</span><div><h3>${esc(p.nom)}</h3><span class="mini">${artNames(id)||'—'} · ${DB.datesCount[id]||0} date(s)</span></div>
@@ -1120,6 +1178,7 @@ function openProjet(id){
       <span>${x.externe?'🔗':'📄'}</span><b style="font-size:12.5px">${esc(x.nom)}</b><span class="mini" style="flex:1">${esc(x.url||'')}</span>
       <button class="btn sm danger" onclick="delDoc(${x.id},${id},this)">✕</button></div>`).join('')}</div>
     <div class="flex center" style="gap:7px"><input class="f" id="ndNom" placeholder="Nom (kit promo, fiche technique…)" style="width:220px"><input class="f" id="ndUrl" placeholder="Lien (Drive, YouTube…)" style="flex:1"><button class="btn sm" onclick="addDoc(${id})">＋ Ajouter</button></div>
+    ${notesHtml('projet',id,notesP)}
   </div>`;
   document.getElementById('overlay').classList.add('open');
 }
