@@ -48,7 +48,10 @@
   .modal-h h3{font-size:16px;flex:1}.modal-b{padding:18px 20px}
   .fgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
   .fgrid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px}
-  .sec-t{font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--primary-2);font-weight:800;margin:16px 0 8px}
+  .sec-t{font-size:10.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--primary-2);font-weight:800;margin:16px 0 8px;cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px}
+  .sec-t::before{content:'▾';font-size:9px;opacity:.6}
+  .sec-t.folded::before{content:'▸'}
+  .sec-t.folded{margin-bottom:4px;opacity:.75}
   .login-box{max-width:380px;margin:12vh auto;background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:28px}
   .toast{position:fixed;bottom:20px;right:20px;background:var(--surface-2);border:1px solid var(--green);color:var(--text);padding:11px 16px;border-radius:11px;z-index:200;display:none;font-weight:600;font-size:13px}
   .toast.err{border-color:var(--red)}
@@ -59,27 +62,36 @@
   .month-grid{display:flex;flex-wrap:wrap;gap:4px}
   /* ===== THÈME CLAIR (défaut) — inspiré marie-seguret.com : blanc, noir, Work Sans, épuré ===== */
   body{font-family:'Work Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+  /* Thème SABLE (défaut) — chaleureux, inspiré marie-seguret.com */
+  body.sable{--bg:#faf6f0;--surface:#fffdfa;--surface-2:#f2ece2;--line:#e2d8c9;--text:#2b2621;--muted:#7d7264;
+    --primary:#2b2621;--primary-2:#4a4139;--green:#4a8f6c;--amber:#b8863b;--red:#b5544a;--cyan:#3c7f86;}
+  /* Thème GRIS CHAUD */
+  body.griswarm{--bg:#f4f3f1;--surface:#fbfaf9;--surface-2:#ecebe8;--line:#dcd9d4;--text:#26241f;--muted:#77736c;
+    --primary:#33302b;--primary-2:#54504a;--green:#4a8f6c;--amber:#b0863f;--red:#b25a4e;--cyan:#3d7c85;}
+  /* Thème CLAIR DOUX */
+  body.clairdoux{--bg:#f7f8fa;--surface:#ffffff;--surface-2:#eef1f5;--line:#e0e4ea;--text:#1f2733;--muted:#6b7684;
+    --primary:#2f3b4d;--primary-2:#4a5768;--green:#3d9070;--amber:#bb8433;--red:#bc5849;--cyan:#2f7d8c;}
   body.light{--bg:#ffffff;--surface:#ffffff;--surface-2:#f6f6f4;--line:#e6e6e2;--text:#111111;--muted:#6b6b6b;
     --primary:#111111;--primary-2:#333333;--green:#1e9e6a;--amber:#c07c1a;--red:#c0392b;--cyan:#0e7490;}
-  body.light .topbar{background:#fff;border-bottom:1px solid var(--line)}
-  body.light .logo{background:#111;color:#fff;box-shadow:none}
-  body.light .tab.on{background:#111;color:#fff}
-  body.light .tab:hover{background:#f0f0ed}
-  body.light .btn.primary{background:#111;color:#fff;box-shadow:none}
-  body.light .btn.primary:hover{background:#333}
-  body.light .btn:hover{border-color:#111}
-  body.light .chip.on{background:#111;border-color:#111;color:#fff}
+  body.clair .topbar{background:#fff;border-bottom:1px solid var(--line)}
+  body.clair .logo{background:#111;color:#fff;box-shadow:none}
+  body.clair .tab.on{background:#111;color:#fff}
+  body.clair .tab:hover{background:#f0f0ed}
+  body.clair .btn.primary{background:#111;color:#fff;box-shadow:none}
+  body.clair .btn.primary:hover{background:#333}
+  body.clair .btn:hover{border-color:#111}
+  body.clair .chip.on{background:#111;border-color:#111;color:#fff}
   body.light tr.clik:hover td{background:#f6f6f4}
   body.light td{border-bottom:1px solid #efefec}
-  body.light .card{box-shadow:0 1px 2px rgba(0,0,0,.03)}
-  body.light .pill.g{background:#e7f5ee;color:#1e7a54}body.light .pill.b{background:#ededed;color:#333}
-  body.light .pill.c{background:#e5f0f4;color:#0e6480}body.light .pill.m{background:#f0f0ed;color:#777}
-  body.light .pill.a{background:#f9efdd;color:#a06a12}body.light .pill.r{background:#f9e5e2;color:#b03426}
-  body.light .toast{box-shadow:0 4px 20px rgba(0,0,0,.12)}
-  body.light .overlay{background:rgba(20,20,20,.35)}
-  body.light .modal{box-shadow:0 12px 50px rgba(0,0,0,.18)}
-  body.light .kpi .v{letter-spacing:-.3px}
-  body.light .sec-t{color:#111;border-bottom:1px solid var(--line);padding-bottom:5px}
+  body.clair .card{box-shadow:0 1px 2px rgba(0,0,0,.03)}
+  body.clair .pill.g{background:#e7f5ee;color:#1e7a54}body.clair .pill.b{background:#ededed;color:#333}
+  body.clair .pill.c{background:#e5f0f4;color:#0e6480}body.clair .pill.m{background:#f0f0ed;color:#777}
+  body.clair .pill.a{background:#f9efdd;color:#a06a12}body.clair .pill.r{background:#f9e5e2;color:#b03426}
+  body.clair .toast{box-shadow:0 4px 20px rgba(0,0,0,.12)}
+  body.clair .overlay{background:rgba(20,20,20,.35)}
+  body.clair .modal{box-shadow:0 12px 50px rgba(0,0,0,.18)}
+  body.clair .kpi .v{letter-spacing:-.3px}
+  body.clair .sec-t{color:#111;border-bottom:1px solid var(--line);padding-bottom:5px}
   /* ===== MOBILE — lisibilité téléphone ===== */
   @media (max-width:760px){
     body{font-size:15px}
@@ -144,7 +156,8 @@
     </div>
     <div style="flex:1"></div>
     <span class="mini" id="userEmail"></span>
-    <button class="btn sm" id="themeBtn" onclick="toggleTheme()" title="Basculer clair / sombre">🌙</button>
+    <select class="f" id="themeSel" onchange="applyTheme(this.value)" title="Apparence" style="width:130px;padding:6px 9px;font-size:12px">
+      <option value="sable">🏜️ Sable</option><option value="griswarm">🪨 Gris chaud</option><option value="clairdoux">☁️ Clair doux</option><option value="dark">🌙 Sombre</option></select>
     <button class="btn sm" onclick="sb.auth.signOut().then(()=>location.reload())">Déconnexion</button>
   </div>
 
@@ -272,9 +285,15 @@ let DB={lieux:[],porteuses:{},jauges:{},contacts:{},types:[],esths:[],datesOrphe
 let filtDiff=new Set(), filtProg=new Set();
 
 /* Thème clair (défaut, style marie-seguret.com) / sombre — persisté */
-function applyTheme(t){document.body.classList.toggle('light',t==='light');const b=document.getElementById('themeBtn');if(b)b.textContent=t==='light'?'🌙':'☀️';try{localStorage.setItem('scenya_theme',t);}catch(e){}}
-function toggleTheme(){applyTheme(document.body.classList.contains('light')?'dark':'light');}
-applyTheme((()=>{try{return localStorage.getItem('scenya_theme')||'light';}catch(e){return 'light';}})());
+const THEMES=['sable','griswarm','clairdoux','dark'];
+function applyTheme(t){
+  if(!THEMES.includes(t))t='sable';
+  document.body.classList.remove('sable','griswarm','clairdoux','light','clair');
+  if(t!=='dark'){document.body.classList.add(t);document.body.classList.add('clair');}
+  const s=document.getElementById('themeSel');if(s)s.value=t;
+  try{localStorage.setItem('scenya_theme',t);}catch(e){}
+}
+applyTheme((()=>{try{const v=localStorage.getItem('scenya_theme');return (v==='light')?'sable':(v||'sable');}catch(e){return 'sable';}})());
 
 function toast(msg,err){const t=document.getElementById('toast');t.textContent=msg;t.className='toast'+(err?' err':'');t.style.display='block';setTimeout(()=>t.style.display='none',2600);}
 const esc=s=>(s??'').toString().replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
@@ -646,6 +665,15 @@ function navLieu(curId,delta){
   const n=ids[i+delta];
   if(n!==undefined)openLieu(n); else toast(delta>0?'Fin de la sélection filtrée':'Début de la sélection filtrée');
 }
+/* Sections de fiche pliables (LOT D) */
+document.addEventListener('click',e=>{
+  const t=e.target.closest('.sec-t');
+  if(!t||!t.closest('#modal'))return;
+  const fold=!t.classList.contains('folded');
+  t.classList.toggle('folded',fold);
+  let n=t.nextElementSibling;
+  while(n&&!n.classList.contains('sec-t')){n.style.display=fold?'none':'';n=n.nextElementSibling;}
+});
 function closeModal(){document.getElementById('overlay').classList.remove('open');}
 function getMonths(el){return [...document.querySelectorAll('#'+el+' .chip.on')].map(c=>+c.dataset.m);}
 async function saveLieu(id){
