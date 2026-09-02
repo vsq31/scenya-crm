@@ -104,6 +104,17 @@
     .flex.center[style*="gap:7px"],.flex.center[style*="gap:8px"]{flex-wrap:wrap}
     .flex.center[style*="gap:7px"] input.f,.flex.center[style*="gap:7px"] select.f{width:47%!important;flex:1 1 40%}
   }
+  /* ===== LOT C : colonne latérale projets ===== */
+  #projSide{position:fixed;left:0;top:58px;bottom:0;width:200px;background:var(--surface);border-right:1px solid var(--line);z-index:30;overflow-y:auto;padding:10px 8px;transition:width .15s}
+  #projSide.collapsed{width:46px;padding:10px 5px}
+  #projSide .ps-item{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:8px;cursor:pointer;font-size:12.5px;font-weight:600;color:var(--muted);white-space:nowrap;overflow:hidden}
+  #projSide .ps-item:hover{background:var(--surface-2);color:var(--text)}
+  #projSide .ps-dot{width:9px;height:9px;border-radius:3px;flex-shrink:0}
+  #projSide.collapsed .ps-label,#projSide.collapsed .ps-title{display:none}
+  #projSide .ps-title{font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);font-weight:800;padding:4px 8px 6px}
+  body.sideOpen .wrap{margin-left:200px;max-width:none}
+  body.sideCollapsed .wrap{margin-left:46px;max-width:none}
+  @media (max-width:760px){#projSide{display:none}body.sideOpen .wrap,body.sideCollapsed .wrap{margin-left:0}}
 </style>
 </head>
 <body>
@@ -137,6 +148,7 @@
     <button class="btn sm" onclick="sb.auth.signOut().then(()=>location.reload())">Déconnexion</button>
   </div>
 
+  <aside id="projSide"></aside>
   <div class="wrap">
     <div class="card" id="loadErr" style="display:none;border-color:var(--red)"><b>⚠️ Les données n'ont pas pu être chargées.</b> <span class="mini">Problème de connexion ou session à renouveler.</span> <button class="btn sm primary" onclick="location.reload()">🔄 Réessayer</button></div>
     <div id="v-annuaire">
@@ -384,6 +396,7 @@ function renderList(){
     if(filtProg.size && ![...filtProg].some(m=>(l.programmation_mois||[]).includes(m))) return false;
     return true;
   });
+  window.LISTIDS=rows.map(l=>l.id);
   document.getElementById('listCount').textContent=rows.length+' lieu(x)'+(filtDiff.size||filtProg.size?' — recherche croisée active':'');
   document.getElementById('listBody').innerHTML=rows.map(l=>{
     const sp=DB.porteuses[l.structure_porteuse_id]||{};
@@ -410,7 +423,7 @@ async function openLieu(id){
   const cts=(DB.contacts[l.id]||[]).concat(DB.contacts['s'+l.structure_porteuse_id]||[]);
   const mkMonths=(field,arr)=>MOIS.map((m,i)=>`<span class="chip ${(arr||[]).includes(i+1)?'on':''}" onclick="this.classList.toggle('on')" data-f="${field}" data-m="${i+1}">${m}</span>`).join('');
   document.getElementById('modal').innerHTML=`
-  <div class="modal-h"><span style="font-size:20px">🎪</span><div><h3>${compDot(l)}${esc(l.nom)}</h3><span class="mini">portée par : ${esc(sp.nom||'—')} · complétude ${cp.ok}/${cp.total}${cp.manque.length?' — à compléter : '+esc(cp.manque.slice(0,4).join(', '))+(cp.manque.length>4?'…':''):' ✓'}</span></div>
+  <div class="modal-h"><button class="btn sm" onclick="navLieu(${id},-1)" title="Fiche précédente (sélection filtrée)">←</button><button class="btn sm" onclick="navLieu(${id},1)" title="Fiche suivante (sélection filtrée)">→</button><span style="font-size:20px">🎪</span><div><h3>${compDot(l)}${esc(l.nom)}</h3><span class="mini">portée par : ${esc(sp.nom||'—')} · complétude ${cp.ok}/${cp.total}${cp.manque.length?' — à compléter : '+esc(cp.manque.slice(0,4).join(', '))+(cp.manque.length>4?'…':''):' ✓'}</span></div>
     <button class="btn sm primary" onclick="saveLieu(${l.id})">💾 Enregistrer</button><button class="btn sm" onclick="closeModal()">✕</button></div>
   <div class="modal-b">
     <div class="sec-t">🎪 Lieu / festival / événement</div>
@@ -597,6 +610,41 @@ async function addNote(entite,id){
   const list=await fetchNotes(entite,id);
   document.getElementById('noteTxt').value='';
   document.getElementById('notesList').innerHTML=list.map(n=>`<div style="padding:7px 0;border-bottom:1px solid var(--line)"><span class="mini"><b>${esc(n.auteur||'—')}</b> · ${(n.created_at||'').slice(0,16).replace('T',' ')}</span><div style="font-size:13px;margin-top:2px">${esc(n.contenu)}</div></div>`).join('');
+}
+/* ===== LOT C : colonne projets + navigation ===== */
+function projColors(i){const P=['#7c5cff','#41d9d9','#ffb454','#3ecf8e','#ff6b9a','#a48bff','#5c9dff','#ff8a5c','#6be5c1','#c99bff','#ffd166','#8affc1','#ff9ecb','#7ce0ff','#b0b3d8','#ff7a7a'];return P[i%P.length];}
+function renderProjSide(){
+  const el=document.getElementById('projSide'); if(!el||!DB.projList)return;
+  const collapsed=el.classList.contains('collapsed');
+  const projs=DB.projList.filter(p=>p.actif!==false);
+  el.innerHTML=`<div class="ps-item" onclick="toggleSide()" title="Replier / déplier">${collapsed?'»':'«'} <span class="ps-label">Replier</span></div>
+    <div class="ps-title">🎷 Projets actifs</div>
+    ${projs.map((p,i)=>`<div class="ps-item" onclick="openProjet(${p.id})" title="${esc(p.nom)}"><span class="ps-dot" style="background:${projColors(i)}"></span><span class="ps-label">${esc(p.nom)}</span></div>`).join('')}`;
+  document.body.classList.toggle('sideOpen',!collapsed);
+  document.body.classList.toggle('sideCollapsed',collapsed);
+}
+function toggleSide(){
+  const el=document.getElementById('projSide');
+  el.classList.toggle('collapsed');
+  try{localStorage.setItem('scenya_side',el.classList.contains('collapsed')?'collapsed':'open');}catch(e){}
+  renderProjSide();
+}
+function initSide(){
+  let st='open'; try{st=localStorage.getItem('scenya_side')||'open';}catch(e){}
+  if(st==='collapsed')document.getElementById('projSide').classList.add('collapsed');
+  renderProjSide();
+}
+function navProjet(curId,delta){
+  const projs=DB.projList.filter(p=>p.actif!==false);
+  const i=projs.findIndex(p=>p.id===curId);
+  const n=projs[i+delta];
+  if(n)openProjet(n.id); else toast(delta>0?'Dernier projet':'Premier projet');
+}
+function navLieu(curId,delta){
+  const ids=window.LISTIDS||[];
+  const i=ids.indexOf(curId);
+  const n=ids[i+delta];
+  if(n!==undefined)openLieu(n); else toast(delta>0?'Fin de la sélection filtrée':'Début de la sélection filtrée');
 }
 function closeModal(){document.getElementById('overlay').classList.remove('open');}
 function getMonths(el){return [...document.querySelectorAll('#'+el+' .chip.on')].map(c=>+c.dataset.m);}
@@ -1100,6 +1148,7 @@ async function loadProjets(){
   DB.docs={}; dc.data.forEach(d=>{(DB.docs[d.projet_id]=DB.docs[d.projet_id]||[]).push(d);});
   DB.datesCount={}; dt.data.forEach(d=>DB.datesCount[d.projet_id]=(DB.datesCount[d.projet_id]||0)+1);
   renderProjets();
+  initSide();
   return true;
 }
 function artNames(pid){return (DB.projArt[pid]||[]).map(x=>{const a=DB.artistes.find(y=>y.id===x.artiste_id);return a?(x.lead?'⭐ ':'')+a.nom:null;}).filter(Boolean).join(', ');}
@@ -1122,7 +1171,8 @@ async function openProjet(id){
   const notesP=await fetchNotes('projet',id);
   const d=DB.deals[id]||{};const lu=DB.lineup[id]||[];const iv=DB.interv[id]||[];const dc=DB.docs[id]||[];
   document.getElementById('modal').innerHTML=`
-  <div class="modal-h"><span style="font-size:20px">🎷</span><div><h3>${esc(p.nom)}</h3><span class="mini">${artNames(id)||'—'} · ${DB.datesCount[id]||0} date(s)</span></div>
+  <div class="modal-h"><button class="btn sm" onclick="navProjet(${id},-1)" title="Projet précédent">←</button><button class="btn sm" onclick="navProjet(${id},1)" title="Projet suivant">→</button><span style="font-size:20px">🎷</span><div><h3>${esc(p.nom)}</h3><span class="mini">${artNames(id)||'—'} · ${DB.datesCount[id]||0} date(s)</span></div>
+    <select class="f" style="width:150px" onchange="if(this.value)openProjet(+this.value)" title="Changer de projet">${DB.projList.filter(x=>x.actif!==false).map(x=>`<option value="${x.id}" ${x.id===id?'selected':''}>${esc(x.nom)}</option>`).join('')}</select>
     <button class="btn sm" onclick="exportPdfProjet(${id})">📄 PDF</button><button class="btn sm primary" onclick="saveProjet(${id})">💾 Enregistrer</button><button class="btn sm" onclick="closeModal()">✕</button></div>
   <div class="modal-b">
     <div class="sec-t">🎼 Projet</div>
