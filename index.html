@@ -144,7 +144,7 @@
 <div id="appView" style="display:none">
   <div class="topbar">
     <div class="logo">S</div>
-    <div><h1>Scenya CRM</h1><div class="sub">LOT 2 — Annuaire & recherche croisée · base Supabase live</div></div>
+    <div><h1>Scenya CRM</h1><div class="sub"><span onclick="openChangelog()" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px" title="Historique des versions">v1.5</span> · agence de booking</div></div>
     <div class="tabs">
       <div class="tab on" data-v="annuaire" onclick="switchTab('annuaire')">🏛️ Annuaire</div>
       <div class="tab" data-v="pilotage" onclick="switchTab('pilotage')">📊 Pilotage</div>
@@ -672,6 +672,61 @@ function navLieu(curId,delta){
   const n=ids[i+delta];
   if(n!==undefined)openLieu(n); else toast(delta>0?'Fin de la sélection filtrée':'Début de la sélection filtrée');
 }
+/* ===== Historique des versions ===== */
+const APP_VERSION='1.5';
+const CHANGELOG=[
+ ['1.5','2 septembre 2026','Collaboration & confort',[
+   'Utilisateurs connectés visibles en temps réel dans la barre du haut',
+   'Mentions @prénom dans les notes → notification à la personne concernée',
+   'Cloche de notifications avec accès direct à la fiche concernée',
+   '4 thèmes d\'apparence : Sable, Gris chaud, Clair doux, Sombre',
+   'Sections des fiches repliables pour plus de lisibilité']],
+ ['1.4','2 septembre 2026','Navigation fluide',[
+   'Colonne permanente des projets actifs, repliable, accessible partout',
+   'Fiche projet : boutons précédent / suivant + menu déroulant',
+   'Fiche prospect/client : précédent / suivant respectant les filtres actifs',
+   'Plus besoin de revenir à la liste entre deux fiches']],
+ ['1.3','2 septembre 2026','Qualification des contacts',[
+   'Pastilles de complétude 🔴 🟠 🟢 sur chaque fiche (10 critères)',
+   'Notes horodatées avec auteur, historique conservé',
+   'Jauges en fourchette (de 300 à 800) + filtre par taille de salle',
+   'Niveau de qualification Client ++']],
+ ['1.2','2 septembre 2026','Fiabilité de la base',[
+   'Correction du bug d\'affichage au chargement (nouvelle tentative automatique)',
+   'Ajout manuel de prospects, clients et projets',
+   'Détection automatique des doublons à la création',
+   'Archivage, blacklist (avec motif) et suppression sécurisée',
+   'Un prospect devient automatiquement client quand une date est confirmée']],
+ ['1.1','1er septembre 2026','Interface repensée',[
+   'Interface claire inspirée du site de Marie',
+   'Adaptation aux téléphones et tablettes']],
+ ['1.0','1er septembre 2026','Première version complète',[
+   'Annuaire à deux niveaux : structures porteuses et lieux/festivals',
+   'Périodes de programmation et de diffusion, recherche croisée',
+   'Fiches projets : deals, line-up avec cachets réels, intérêt stratégique',
+   'Dates : vue par projet, export CSV, line-up reporté et modifiable',
+   'Pilotage : commissions cliquables, pipeline, répartition par personne',
+   'Rentabilité : CA moyen par représentation, comparaison des projets',
+   'Billetterie : pointages, courbe d\'évolution, relances automatiques',
+   'Export PDF personnalisable par fiche projet']]
+];
+function openChangelog(){
+  document.getElementById('modal').innerHTML=`
+  <div class="modal-h"><span style="font-size:20px">📋</span><div><h3>Historique des versions</h3><span class="mini">Scenya CRM — version actuelle : ${APP_VERSION}</span></div><button class="btn sm" onclick="closeModal()">✕</button></div>
+  <div class="modal-b">${CHANGELOG.map((c,i)=>`
+    <div class="card" style="padding:13px;margin-bottom:10px${i===0?';border-color:var(--primary-2)':''}">
+      <div class="flex between center" style="margin-bottom:7px">
+        <b style="font-size:14px">Version ${c[0]} — ${esc(c[2])}</b>
+        <span class="mini">${c[1]}${i===0?' · actuelle':''}</span>
+      </div>
+      <ul style="margin:0;padding-left:18px;font-size:12.5px;line-height:1.7;color:var(--muted)">
+        ${c[3].map(x=>`<li>${esc(x)}</li>`).join('')}
+      </ul></div>`).join('')}
+    <p class="mini">À venir : espace administration (contrats, factures), espace régie, portail organisateur, moteur de subventions.</p>
+  </div>`;
+  document.getElementById('overlay').classList.add('open');
+}
+
 /* ===== LOT E : présence en ligne, mentions, notifications ===== */
 const KNOWN_USERS=['jerome.gays','marie','sandrine'];
 let presenceChan=null;
