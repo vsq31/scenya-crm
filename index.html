@@ -155,6 +155,8 @@
       <div class="tab" data-v="rappro" onclick="switchTab('rappro')">🔗 Rapprochement dates</div>
     </div>
     <div style="flex:1"></div>
+    <span class="mini" id="presence" title="Utilisateurs connectés"></span>
+    <button class="btn sm" id="notifBtn" onclick="openNotifs()" title="Notifications" style="position:relative">🔔<span id="notifBadge" style="display:none;position:absolute;top:-5px;right:-5px;background:var(--red);color:#fff;border-radius:10px;font-size:9px;padding:1px 5px;font-weight:800"></span></button>
     <span class="mini" id="userEmail"></span>
     <select class="f" id="themeSel" onchange="applyTheme(this.value)" title="Apparence" style="width:130px;padding:6px 9px;font-size:12px">
       <option value="sable">🏜️ Sable</option><option value="griswarm">🪨 Gris chaud</option><option value="clairdoux">☁️ Clair doux</option><option value="dark">🌙 Sombre</option></select>
@@ -312,6 +314,9 @@ async function init(){
   }
   const le=document.getElementById('loadErr');
   if(le)le.style.display=ok?'none':'block';
+  initPresence();
+  await loadNotifs();
+  setInterval(loadNotifs,60000);
 }
 async function doLogin(){
   const email=document.getElementById('liEmail').value.trim(), pass=document.getElementById('liPass').value;
@@ -617,7 +622,7 @@ async function fetchNotes(entite,id){
 }
 function notesHtml(entite,id,list){
   return `<div class="sec-t">📝 Notes & commentaires</div>
-  <div class="flex" style="gap:7px;margin-bottom:9px"><input class="f" id="noteTxt" placeholder="Écrire une note… (auteur : ${esc(window.USER||'moi')})" onkeydown="if(event.key==='Enter')addNote('${entite}',${id})" style="flex:1"><button class="btn sm primary" onclick="addNote('${entite}',${id})">＋ Note</button></div>
+  <div class="flex" style="gap:7px;margin-bottom:9px"><input class="f" id="noteTxt" placeholder="Note… @marie ou @sandrine pour notifier (auteur : ${esc(window.USER||'moi')})" onkeydown="if(event.key==='Enter')addNote('${entite}',${id})" style="flex:1"><button class="btn sm primary" onclick="addNote('${entite}',${id})">＋ Note</button></div>
   <div id="notesList">${list.map(n=>`<div style="padding:7px 0;border-bottom:1px solid var(--line)"><span class="mini"><b>${esc(n.auteur||'—')}</b> · ${(n.created_at||'').slice(0,16).replace('T',' ')}</span><div style="font-size:13px;margin-top:2px">${esc(n.contenu)}</div></div>`).join('')||'<span class="mini">Aucune note pour l\'instant.</span>'}</div>`;
 }
 async function addNote(entite,id){
@@ -626,6 +631,8 @@ async function addNote(entite,id){
   const {error}=await sb.from('notes').insert({entite,entite_id:id,auteur:window.USER||null,contenu:txt});
   if(error){toast(error.message,true);return;}
   toast('✓ Note ajoutée');
+  const lib=entite==='projet'?((DB.projList||[]).find(p=>p.id===id)||{}).nom:((DB.lieux||[]).find(l=>l.id===id)||{}).nom;
+  await pushMentions(txt,entite,id,lib||'fiche');
   const list=await fetchNotes(entite,id);
   document.getElementById('noteTxt').value='';
   document.getElementById('notesList').innerHTML=list.map(n=>`<div style="padding:7px 0;border-bottom:1px solid var(--line)"><span class="mini"><b>${esc(n.auteur||'—')}</b> · ${(n.created_at||'').slice(0,16).replace('T',' ')}</span><div style="font-size:13px;margin-top:2px">${esc(n.contenu)}</div></div>`).join('');
@@ -665,6 +672,50 @@ function navLieu(curId,delta){
   const n=ids[i+delta];
   if(n!==undefined)openLieu(n); else toast(delta>0?'Fin de la sélection filtrée':'Début de la sélection filtrée');
 }
+/* ===== LOT E : présence en ligne, mentions, notifications ===== */
+const KNOWN_USERS=['jerome.gays','marie','sandrine'];
+let presenceChan=null;
+function initPresence(){
+  if(presenceChan)return;
+  presenceChan=sb.channel('scenya_presence',{config:{presence:{key:window.USER||'invité'}}});
+  presenceChan.on('presence',{event:'sync'},()=>{
+    const st=presenceChan.presenceState();
+    const users=Object.keys(st);
+    const el=document.getElementById('presence');
+    if(el)el.innerHTML=users.map(u=>`<span title="${esc(u)} — en ligne" style="display:inline-flex;align-items:center;gap:4px;margin-right:9px"><span style="width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block"></span>${esc(u.split('.')[0])}</span>`).join('');
+  }).subscribe(async s=>{if(s==='SUBSCRIBED')await presenceChan.track({at:new Date().toISOString()});});
+}
+async function loadNotifs(){
+  const {data,error}=await sb.from('notifications').select('*').eq('destinataire',window.USER||'').eq('lu',false).order('created_at',{ascending:false});
+  if(error)return;
+  window.NOTIFS=data;
+  const b=document.getElementById('notifBadge');
+  if(b){b.style.display=data.length?'block':'none';b.textContent=data.length;}
+}
+function openNotifs(){
+  const list=window.NOTIFS||[];
+  document.getElementById('modal').innerHTML=`
+  <div class="modal-h"><span style="font-size:20px">🔔</span><div><h3>Notifications</h3><span class="mini">${list.length} non lue(s)</span></div>
+    ${list.length?'<button class="btn sm" onclick="markAllRead()">Tout marquer comme lu</button>':''}<button class="btn sm" onclick="closeModal()">✕</button></div>
+  <div class="modal-b">${list.map(n=>`<div class="card" style="padding:11px;margin-bottom:8px">
+    <span class="mini"><b>${esc(n.auteur||'—')}</b> · ${(n.created_at||'').slice(0,16).replace('T',' ')}</span>
+    <div style="font-size:13px;margin:4px 0">${esc(n.message)}</div>
+    <div class="flex" style="gap:7px">${n.entite==='structure'?`<button class="btn sm primary" onclick="markRead(${n.id});closeModal();openLieu(${n.entite_id})">Ouvrir la fiche</button>`:n.entite==='projet'?`<button class="btn sm primary" onclick="markRead(${n.id});closeModal();openProjet(${n.entite_id})">Ouvrir le projet</button>`:''}
+    <button class="btn sm" onclick="markRead(${n.id});openNotifs()">Marquer comme lu</button></div></div>`).join('')||'<span class="mini">Aucune notification 🎉</span>'}</div>`;
+  document.getElementById('overlay').classList.add('open');
+}
+async function markRead(id){await sb.from('notifications').update({lu:true}).eq('id',id);await loadNotifs();}
+async function markAllRead(){for(const n of (window.NOTIFS||[]))await sb.from('notifications').update({lu:true}).eq('id',n.id);await loadNotifs();closeModal();toast('✓ Notifications marquées comme lues');}
+async function pushMentions(txt,entite,id,libelle){
+  const mentions=[...new Set((txt.match(/@([\w.\-]+)/g)||[]).map(m=>m.slice(1).toLowerCase()))];
+  for(const m of mentions){
+    const dest=KNOWN_USERS.find(u=>u.toLowerCase().startsWith(m))||m;
+    if(dest===window.USER)continue;
+    await sb.from('notifications').insert({destinataire:dest,auteur:window.USER,message:'@'+m+' vous a mentionné sur « '+libelle+' » : '+txt.slice(0,120),entite,entite_id:id});
+  }
+  if(mentions.length)toast('✓ '+mentions.length+' personne(s) notifiée(s)');
+}
+
 /* Sections de fiche pliables (LOT D) */
 document.addEventListener('click',e=>{
   const t=e.target.closest('.sec-t');
