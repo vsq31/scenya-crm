@@ -144,7 +144,7 @@
 <div id="appView" style="display:none">
   <div class="topbar">
     <div class="logo">S</div>
-    <div><h1>Scenya CRM</h1><div class="sub"><span onclick="openChangelog()" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px" title="Historique des versions">v1.8</span> · agence de booking</div></div>
+    <div><h1>Scenya CRM</h1><div class="sub"><span onclick="openChangelog()" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px" title="Historique des versions">v1.9</span> · agence de booking</div></div>
     <div class="tabs">
       <div class="tab on" data-v="annuaire" onclick="switchTab('annuaire')">🏛️ Annuaire</div>
       <div class="tab" data-v="pilotage" onclick="switchTab('pilotage')">📊 Pilotage</div>
@@ -179,6 +179,9 @@
           <div><label class="fl">à</label><input class="f" id="fJmax" type="number" placeholder="max" oninput="renderList()" style="width:80px"></div>
           <div><label class="fl">Qualif.</label><select class="f" id="fQualif" onchange="renderList()" style="width:125px"><option value="">Actives</option><option>Client ++</option><option>Client</option><option>Prospect</option><option>Archivé</option><option>Blacklist</option></select></div>
           <div><label class="fl">Source</label><select class="f" id="fSrc" onchange="renderList()" style="width:130px"><option value="">Toutes</option><option value="agence">Base agence</option><option value="prospectacles">Prospectacles</option></select></div>
+          <div><label class="fl">Complétude</label><select class="f" id="fComp" onchange="renderList()" style="width:120px"><option value="">Toutes</option><option value="r">🔴 Rouge</option><option value="a">🟠 Orange</option><option value="g">🟢 Vert</option></select></div>
+          <div><label class="fl">📍 À moins de</label><div class="flex" style="gap:5px"><select class="f" id="fDistKm" onchange="renderList()" style="width:90px"><option value="">— km</option><option>25</option><option>50</option><option>100</option><option>150</option><option>200</option><option>300</option></select><input class="f" id="fDistVille" placeholder="ville ou date…" list="fDistList" style="width:170px" onkeydown="if(event.key==='Enter')setDistRef()"><datalist id="fDistList"></datalist><button class="btn sm" onclick="setDistRef()" title="Définir le point de référence">OK</button></div></div>
+          <div style="align-self:flex-end"><button class="btn sm" id="advBtn" onclick="toggleAdv()">🔎 Recherche avancée (groupes ET / OU)</button></div>
           <div style="align-self:flex-end"><div class="flex" style="gap:7px"><button class="btn sm primary" onclick="openNewStruct('Prospect')">＋ Prospect</button><button class="btn sm primary" onclick="openNewStruct('Client')">＋ Client</button></div></div>
         </div>
         <div class="flex wrap-f" style="gap:20px;margin-top:12px">
@@ -187,6 +190,7 @@
         </div>
       </div>
       <div class="card">
+        <div id="advPanel" style="display:none;margin-bottom:12px"></div>
         <div class="flex between center" style="margin-bottom:10px"><b id="listCount"></b><span class="mini">clique une ligne pour ouvrir la fiche lieu + structure porteuse</span></div>
         <div class="scroll-y"><table>
           <thead><tr><th>Lieu / événement</th><th>Typologie</th><th>Esthétiques</th><th>Ville (dépt)</th><th>Jauges</th><th>Diffusion</th><th>Programmation</th><th>Qualif.</th></tr></thead>
@@ -425,7 +429,8 @@ function completude(l){
   return {ok,total:COMPLETUDE.length,c,manque};
 }
 function compDot(l){const cp=completude(l);const col=cp.c==='g'?'var(--green)':cp.c==='a'?'var(--amber)':'var(--red)';
-  return `<span title="Complétude ${cp.ok}/${cp.total}${cp.manque.length?' — manque : '+cp.manque.join(', '):''}" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${col};margin-right:7px;vertical-align:middle"></span>`;}
+  const lab=cp.c==='g'?'Fiche suffisamment complète':cp.c==='a'?'Fiche partiellement renseignée':'Fiche incomplète — informations essentielles manquantes';
+  return `<span title="${lab} (${cp.ok}/${cp.total})${cp.manque.length?' — manque : '+cp.manque.join(', '):''}" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${col};margin-right:7px;vertical-align:middle"></span>`;}
 function lieuMaxJauge(l){const js=DB.jauges[l.id]||[];return js.length?Math.max(...js.map(j=>j.capacite)):null;}
 function typeName(id){const t=DB.types.find(x=>x.id===id);return t?t.nom:'—';}
 function esthNames(ids){return (ids||[]).map(i=>{const e=(DB.esthsAll||DB.esths).find(x=>x.id===i);return e?e.nom:null;}).filter(Boolean);}
@@ -442,9 +447,20 @@ function renderList(){
   const jmax=+document.getElementById('fJmax').value||0;
   const qf=document.getElementById('fQualif').value;
   const src=document.getElementById('fSrc').value;
+  const comp=document.getElementById('fComp').value;
+  const dkm=+document.getElementById('fDistKm').value||0, dref=window.DIST_REF;
+  const advOn=ADV.groups.some(g=>g.crits.length);
   let rows=DB.lieux.filter(l=>{
+    if(advOn){
+      const sp=DB.porteuses[l.structure_porteuse_id]||{};
+      if(sp.archive||sp.blacklist)return false;
+      if(q && !((l.nom||'')+' '+(l.ville||'')).toLowerCase().includes(q)) return false;
+      return ADV.groups.some(g=>g.crits.length&&g.crits.every(c=>evalCrit(l,c)));
+    }
     if(src==='agence'&&l.source)return false;
     if(src==='prospectacles'&&!l.source)return false;
+    if(comp&&completude(l).c!==comp)return false;
+    if(dkm&&dref){const d=distKm(l,dref);if(d===null||d>dkm)return false;}
     const sp=DB.porteuses[l.structure_porteuse_id]||{};
     const cts=(DB.contacts[l.id]||[]).map(c=>(c.nom||'')+(c.prenom||'')).join(' ');
     if(q && !((l.nom||'')+' '+(l.ville||'')+' '+cts).toLowerCase().includes(q)) return false;
@@ -459,9 +475,11 @@ function renderList(){
     if(filtProg.size && ![...filtProg].some(m=>(l.programmation_mois||[]).includes(m))) return false;
     return true;
   });
+  const showDist=!!(dref&&(dkm||advOn));
+  if(showDist)rows.sort((a,b)=>(distKm(a,dref)??1e9)-(distKm(b,dref)??1e9));
   window.LISTIDS=rows.map(l=>l.id);
   const MAXR=300;
-  document.getElementById('listCount').textContent=rows.length+' lieu(x)'+(filtDiff.size||filtProg.size?' — recherche croisée active':'')+(rows.length>MAXR?' — affichage des '+MAXR+' premiers, affinez les filtres':'');
+  document.getElementById('listCount').textContent=rows.length+' lieu(x)'+(advOn?' — recherche avancée active':(filtDiff.size||filtProg.size?' — recherche croisée active':''))+(showDist?' — triés par distance depuis '+dref.label:'')+(rows.length>MAXR?' — affichage des '+MAXR+' premiers, affinez les filtres':'');
   document.getElementById('listBody').innerHTML=rows.slice(0,MAXR).map(l=>{
     const sp=DB.porteuses[l.structure_porteuse_id]||{};
     const js=DB.jauges[l.id]||[];
@@ -469,7 +487,7 @@ function renderList(){
       <td class="row-strong">${compDot(l)}${esc(l.nom)}${l.source?' <span class="mini" title="'+esc(l.source)+'">📥</span>':''}</td>
       <td class="mini">${esc(typeNames(l).join(' · ')||'—')}</td>
       <td>${esthNames(l.esthetiques).map(n=>`<span class="pill c">${esc(n)}</span>`).join(' ')||'<span class="mini">Non renseigné</span>'}</td>
-      <td>${esc(l.ville||'—')} <span class="mini">(${esc(l.departement||'—')})</span></td>
+      <td>${esc(l.ville||'—')} <span class="mini">(${esc(l.departement||'—')})</span>${showDist&&distKm(l,dref)!==null?` <span class="pill c">${Math.round(distKm(l,dref))} km</span>`:''}</td>
       <td class="mini">${js.length?js.map(j=>j.capacite+' '+j.label).join(' · '):'à renseigner'}</td>
       <td class="mini">${moisLabel(l.diffusion_mois)}</td>
       <td class="mini">${moisLabel(l.programmation_mois)}</td>
@@ -777,6 +795,104 @@ function exportMediasCSV(){
   toast('⬇️ '+rows.length+' média(s) exporté(s)');
 }
 
+/* ===== LOT G : DISTANCE + RECHERCHE AVANCÉE ===== */
+function distKm(l,ref){if(!ref||l.lat==null||l.lng==null)return null;const R=6371,dLat=(l.lat-ref.lat)*Math.PI/180,dLng=(l.lng-ref.lng)*Math.PI/180;const a=Math.sin(dLat/2)**2+Math.cos(ref.lat*Math.PI/180)*Math.cos(l.lat*Math.PI/180)*Math.sin(dLng/2)**2;return 2*R*Math.asin(Math.sqrt(a));}
+const GEO_CACHE={};
+async function geocodeVille(txt){
+  txt=(txt||'').trim(); if(!txt)return null;
+  // 1) une date confirmée / option ? (format « Projet — AAAA-MM-JJ — Lieu »)
+  const d=(DB.datesAll||[]).find(x=>dateRefLabel(x)===txt);
+  if(d){const l=DB.lieux.find(y=>y.id===d.lieu_id);if(l&&l.lat!=null)return {lat:+l.lat,lng:+l.lng,label:(l.ville||l.nom)+' ('+d.date_spectacle+')'};toast('Cette date n\'a pas de lieu géolocalisé',true);return null;}
+  // 2) un lieu du CRM ?
+  const l2=DB.lieux.find(y=>y.lat!=null&&(y.nom||'').toLowerCase()===txt.toLowerCase());
+  if(l2)return {lat:+l2.lat,lng:+l2.lng,label:l2.nom};
+  // 3) géocodage BAN (ville / adresse)
+  if(GEO_CACHE[txt])return GEO_CACHE[txt];
+  try{const r=await fetch('https://api-adresse.data.gouv.fr/search/?q='+encodeURIComponent(txt)+'&limit=1');const j=await r.json();const f=j.features&&j.features[0];
+    if(f){const ref={lat:f.geometry.coordinates[1],lng:f.geometry.coordinates[0],label:f.properties.city||f.properties.label};GEO_CACHE[txt]=ref;return ref;}
+  }catch(e){}
+  toast('Lieu introuvable : '+txt,true);return null;
+}
+function dateRefLabel(d){const p=(DB.projList||[]).find(x=>x.id===d.projet_id);return (p?p.nom:'?')+' — '+d.date_spectacle+' — '+lieuLabel(d);}
+function fillDistList(){
+  const dl=document.getElementById('fDistList'); if(!dl)return;
+  const ds=(DB.datesAll||[]).filter(d=>['confirmee','option'].includes(d.statut)&&d.lieu_id).sort((a,b)=>a.date_spectacle.localeCompare(b.date_spectacle));
+  dl.innerHTML=ds.map(d=>`<option value="${esc(dateRefLabel(d))}">`).join('');
+}
+async function setDistRef(){
+  const txt=document.getElementById('fDistVille').value;
+  if(!txt){window.DIST_REF=null;renderList();return;}
+  const ref=await geocodeVille(txt); if(!ref)return;
+  window.DIST_REF=ref; if(!document.getElementById('fDistKm').value)document.getElementById('fDistKm').value='100';
+  toast('📍 Référence : '+ref.label); renderList();
+}
+/* --- Recherche avancée : groupes (ET dans un groupe, OU entre groupes) --- */
+const ADV={groups:[{crits:[]}]};
+const ADV_FIELDS={
+  typologie:{lab:'Typologie',kind:'list',vals:()=>DB.types.map(t=>[t.id,t.nom]),get:l=>(l.types&&l.types.length)?l.types:(l.type_id?[l.type_id]:[])},
+  esthetique:{lab:'Esthétique',kind:'list',vals:()=>DB.esths.map(e=>[e.id,e.nom]),get:l=>l.esthetiques||[]},
+  diffusion:{lab:'Période de diffusion',kind:'list',vals:()=>MOIS.map((m,i)=>[i+1,m]),get:l=>l.diffusion_mois||[]},
+  programmation:{lab:'Période de programmation',kind:'list',vals:()=>MOIS.map((m,i)=>[i+1,m]),get:l=>l.programmation_mois||[]},
+  region:{lab:'Région',kind:'list',vals:()=>[...new Set(DB.lieux.map(l=>l.region).filter(Boolean))].sort().map(r=>[r,r]),get:l=>l.region?[l.region]:[]},
+  departement:{lab:'Département',kind:'list',vals:()=>[...new Set(DB.lieux.map(l=>l.departement).filter(Boolean))].sort().map(r=>[r,r]),get:l=>l.departement?[l.departement]:[]},
+  pays:{lab:'Pays',kind:'list',vals:()=>[...new Set(DB.lieux.map(l=>l.pays).filter(Boolean))].sort().map(r=>[r,r]),get:l=>l.pays?[l.pays]:[]},
+  qualif:{lab:'Qualification',kind:'list',vals:()=>[['Prospect','Prospect'],['Client','Client'],['Client ++','Client ++']],get:l=>[(DB.porteuses[l.structure_porteuse_id]||{}).qualif||'Prospect']},
+  source:{lab:'Source',kind:'list',vals:()=>[['agence','Base agence'],['prospectacles','Prospectacles']],get:l=>[l.source?'prospectacles':'agence']},
+  completude:{lab:'Complétude',kind:'list',vals:()=>[['r','🔴 Rouge'],['a','🟠 Orange'],['g','🟢 Vert']],get:l=>[completude(l).c]},
+  negociation:{lab:'Négociation (tout projet)',kind:'list',vals:()=>Object.entries(NEGO_ST).filter(([k])=>k!=='jamais_propose').map(([k,v])=>[k,v[0]]),get:l=>(DB.negoBySp[l.structure_porteuse_id]||[]).map(n=>n.statut)},
+  jauge_max:{lab:'Jauge max',kind:'num',get:l=>lieuMaxJauge(l)},
+  jauge_min:{lab:'Jauge min',kind:'num',get:l=>{const js=DB.jauges[l.id]||[];return js.length?Math.min(...js.map(j=>j.capacite)):null;}},
+  ville:{lab:'Ville',kind:'text',get:l=>l.ville||''},
+  nom:{lab:'Nom',kind:'text',get:l=>l.nom||''},
+  contact_email:{lab:'Email de contact',kind:'text',get:l=>[(l.email||'')].concat((DB.contacts[l.id]||[]).map(c=>c.email||'')).join(' ')},
+  distance:{lab:'📍 Distance',kind:'dist',get:l=>l}
+};
+const ADV_OPS={
+  list:[['in','contient au moins une des valeurs'],['all','contient toutes les valeurs'],['notin','ne contient pas'],['empty','est vide'],['notempty','n\'est pas vide']],
+  num:[['gt','supérieur à'],['lt','inférieur à'],['empty','est vide'],['notempty','n\'est pas vide']],
+  text:[['has','contient'],['nothas','ne contient pas'],['empty','est vide'],['notempty','n\'est pas vide']],
+  dist:[['lte','à moins de (km) de']]
+};
+function evalCrit(l,c){
+  const F=ADV_FIELDS[c.f]; if(!F)return true;
+  const v=F.get(l);
+  if(F.kind==='list'){const vals=c.v||[];const has=x=>v.includes(x)||v.includes(String(x))||v.map(String).includes(String(x));
+    switch(c.op){case 'in':return !vals.length||vals.some(has);case 'all':return vals.every(has);case 'notin':return !vals.some(has);case 'empty':return !v.length;case 'notempty':return v.length>0;}}
+  if(F.kind==='num'){const n=+c.v;switch(c.op){case 'gt':return v!=null&&v>n;case 'lt':return v!=null&&v<n;case 'empty':return v==null;case 'notempty':return v!=null;}}
+  if(F.kind==='text'){const s=(v||'').toLowerCase(),t=(c.v||'').toLowerCase();switch(c.op){case 'has':return !t||s.includes(t);case 'nothas':return !s.includes(t);case 'empty':return !s.trim();case 'notempty':return !!s.trim();}}
+  if(F.kind==='dist'){if(!c.ref)return true;const d=distKm(l,c.ref);return d!==null&&d<=(+c.km||100);}
+  return true;
+}
+function toggleAdv(){const p=document.getElementById('advPanel');const on=p.style.display==='none';p.style.display=on?'block':'none';document.getElementById('advBtn').classList.toggle('primary',on);if(on)renderAdv();else{ADV.groups=[{crits:[]}];renderList();}}
+function renderAdv(){
+  const p=document.getElementById('advPanel');
+  p.innerHTML=`<div class="card" style="border-color:var(--primary-2)">
+    <div class="flex between center wrap-f" style="margin-bottom:8px"><b>🔎 Recherche avancée</b><span class="mini">Dans un groupe, les critères se cumulent (ET). Entre les groupes : l'un OU l'autre.</span><div class="flex" style="gap:6px"><button class="btn sm" onclick="ADV.groups.push({crits:[]});renderAdv()">＋ Groupe (OU)</button><button class="btn sm" onclick="ADV.groups=[{crits:[]}];renderAdv();renderList()">Effacer</button></div></div>
+    ${ADV.groups.map((g,gi)=>`${gi?'<div class="mini" style="text-align:center;font-weight:800;margin:6px 0">— OU —</div>':''}
+    <div class="card" style="padding:10px;background:var(--surface-2)">
+      <div class="flex between center" style="margin-bottom:6px"><span class="mini" style="font-weight:800">Groupe ${gi+1}${g.crits.length>1?' — tous ces critères (ET)':''}</span>${ADV.groups.length>1?`<button class="btn sm" onclick="ADV.groups.splice(${gi},1);renderAdv();renderList()">✕ groupe</button>`:''}</div>
+      ${g.crits.map((c,ci)=>critRow(gi,ci,c)).join('')}
+      <div style="margin-top:6px"><select class="f" style="width:230px" onchange="if(this.value){addCrit(${gi},this.value);}"><option value="">＋ Ajouter un critère…</option>${Object.entries(ADV_FIELDS).map(([k,f])=>`<option value="${k}">${f.lab}</option>`).join('')}</select></div>
+    </div>`).join('')}
+  </div>`;
+}
+function critRow(gi,ci,c){
+  const F=ADV_FIELDS[c.f];const ops=ADV_OPS[F.kind];
+  let val='';
+  if(F.kind==='list'&&!['empty','notempty'].includes(c.op)){val=`<div class="flex wrap-f" style="gap:4px;flex:1">${F.vals().map(([id,nom])=>`<span class="chip ${(c.v||[]).map(String).includes(String(id))?'on':''}" onclick="togCritVal(${gi},${ci},'${String(id).replace(/'/g,"\\'")}')">${esc(nom)}</span>`).join('')}</div>`;}
+  else if(F.kind==='num'&&!['empty','notempty'].includes(c.op)){val=`<input class="f" type="number" value="${c.v||''}" style="width:110px" oninput="ADV.groups[${gi}].crits[${ci}].v=this.value;renderList()">`;}
+  else if(F.kind==='text'&&!['empty','notempty'].includes(c.op)){val=`<input class="f" value="${esc(c.v||'')}" style="width:200px" oninput="ADV.groups[${gi}].crits[${ci}].v=this.value;renderList()">`;}
+  else if(F.kind==='dist'){val=`<input class="f" type="number" value="${c.km||100}" style="width:80px" oninput="ADV.groups[${gi}].crits[${ci}].km=this.value;renderList()"> <span class="mini">km de</span> <input class="f" value="${esc(c.txt||'')}" list="fDistList" placeholder="ville ou date confirmée" style="width:220px" onkeydown="if(event.key==='Enter')setCritRef(${gi},${ci},this.value)" onchange="setCritRef(${gi},${ci},this.value)"> ${c.ref?'<span class="pill c">📍 '+esc(c.ref.label)+'</span>':'<span class="mini">tape une ville puis Entrée</span>'}`;}
+  return `<div class="flex center wrap-f" style="gap:6px;padding:5px 0;border-bottom:1px solid var(--line)">
+    <b style="min-width:150px;font-size:12.5px">${F.lab}</b>
+    ${F.kind==='dist'?'':`<select class="f" style="width:210px" onchange="ADV.groups[${gi}].crits[${ci}].op=this.value;renderAdv();renderList()">${ops.map(([k,v])=>`<option value="${k}" ${c.op===k?'selected':''}>${v}</option>`).join('')}</select>`}
+    ${val}
+    <button class="btn sm" onclick="ADV.groups[${gi}].crits.splice(${ci},1);renderAdv();renderList()">✕</button></div>`;
+}
+function addCrit(gi,f){const F=ADV_FIELDS[f];ADV.groups[gi].crits.push({f,op:ADV_OPS[F.kind][0][0],v:F.kind==='list'?[]:''});renderAdv();renderList();}
+function togCritVal(gi,ci,id){const c=ADV.groups[gi].crits[ci];const F=ADV_FIELDS[c.f];const key=F.vals().find(([k])=>String(k)===String(id));const val=key?key[0]:id;const i=(c.v||[]).findIndex(x=>String(x)===String(val));if(i>=0)c.v.splice(i,1);else (c.v=c.v||[]).push(val);renderAdv();renderList();}
+async function setCritRef(gi,ci,txt){const c=ADV.groups[gi].crits[ci];c.txt=txt;const ref=await geocodeVille(txt);if(ref){c.ref=ref;window.DIST_REF=ref;renderAdv();renderList();}}
+
 /* ===== LOT F1 : NÉGOCIATIONS, HISTORIQUE COMMERCIAL, TÂCHES ===== */
 const NEGO_ST={jamais_propose:['Jamais proposé','m'],interet:['Intéressé','c'],option:['Option','b'],confirme:['Confirmé','g'],refuse:['Refusé','r'],a_relancer:['À relancer','a'],sans_reponse:['Sans réponse','m']};
 const NEGO_ORDER=['option','confirme','interet','a_relancer','sans_reponse','jamais_propose','refuse'];
@@ -916,8 +1032,14 @@ async function renderTaches(){
 async function relanceFaiteTache(id){await sb.from('interactions').update({relance_faite:true}).eq('id',id);toast('✓ Fait');await reloadNegos();renderTaches();}
 
 /* ===== Historique des versions ===== */
-const APP_VERSION='1.8';
+const APP_VERSION='1.9';
 const CHANGELOG=[
+ ['1.9','4 septembre 2026','Recherche géographique & avancée',[
+   'Toutes les adresses géolocalisées (Base Adresse Nationale) : recherche « à moins de X km » d\'une ville, d\'un lieu du CRM ou d\'une date confirmée, résultats triés par distance',
+   'Recherche avancée par groupes : critères cumulés (ET) dans un groupe, groupes alternatifs (OU) — sans priorité d\'opérateurs',
+   'Opérateurs : contient au moins une / toutes les valeurs, ne contient pas, est vide, n\'est pas vide, supérieur / inférieur à',
+   'Filtre de complétude (rouge / orange / vert) et infobulles explicites sur les pastilles',
+   'Critères disponibles : typologie, esthétique, périodes, région, département, pays, qualification, source, complétude, statut de négociation, jauges, ville, nom, email, distance']],
  ['1.8','4 septembre 2026','Taxonomie & typologies',[
    '8 esthétiques principales : Musiques actuelles, Electro, Jazz, Classique, Théâtre, Humour, Jeune public, Toutes esthétiques (liste extensible)',
    'Anciennes esthétiques regroupées automatiquement (Swing, Manouche, Big band → Jazz ; Chanson, Blues, World, Groove → Musiques actuelles)',
@@ -1383,7 +1505,7 @@ async function loadDates(){
   if(dt.error||dlu.error){toast('Erreur dates : '+(dt.error||dlu.error).message,true);return false;}
   DB.datesAll=dt.data;
   DB.dateLineup={}; dlu.data.forEach(m=>{(DB.dateLineup[m.date_id]=DB.dateLineup[m.date_id]||[]).push(m);});
-  fillDateFilters(); renderDates();
+  fillDateFilters(); renderDates(); fillDistList();
   return true;
 }
 function fillDateFilters(){
