@@ -146,7 +146,7 @@
 <div id="appView" style="display:none">
   <div class="topbar">
     <div class="logo">S</div>
-    <div><h1>Scenya CRM</h1><div class="sub"><span onclick="openChangelog()" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px" title="Historique des versions">v2.0</span> · agence de booking</div></div>
+    <div><h1>Scenya CRM</h1><div class="sub"><span onclick="openChangelog()" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px" title="Historique des versions">v2.1</span> · agence de booking</div></div>
     <div class="tabs">
       <a class="tab on" data-v="annuaire" href="#/annuaire" style="text-decoration:none">🏛️ Annuaire</a>
       <a class="tab" data-v="pilotage" href="#/pilotage" style="text-decoration:none">📊 Pilotage</a>
@@ -296,6 +296,11 @@
 </div>
 
 <div class="overlay" id="overlay" onclick="if(event.target===this)closeModal()"><div class="modal" id="modal"></div></div>
+<div class="overlay" id="confirmOverlay" style="z-index:200"><div class="modal" style="max-width:460px;margin-top:15vh"><div class="modal-b">
+  <h3 style="margin:0 0 8px">⚠️ Modifications non enregistrées</h3>
+  <p style="font-size:13px;margin:0 0 14px">Vous avez modifié cette fiche sans l'enregistrer. Voulez-vous les enregistrer avant de quitter ?</p>
+  <div class="flex wrap-f" style="gap:8px"><button class="btn primary" onclick="resolveDirty('save')">💾 Enregistrer</button><button class="btn danger" onclick="resolveDirty('discard')">Quitter sans enregistrer</button><button class="btn" onclick="resolveDirty('cancel')">Annuler</button></div>
+</div></div></div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -502,6 +507,7 @@ function renderList(){
 /* ---------- FICHE LIEU + STRUCTURE ---------- */
 async function openLieu(id,fromRoute){
   const l=DB.lieux.find(x=>x.id===id); if(!l){toast('Fiche introuvable',true);return;}
+  if(!fromRoute&&window.DIRTY&&!(await guardDirty()))return; window.DIRTY=false; window.SAVE_FN=()=>saveLieu(id);
   if(!fromRoute)setHash('/lieu/'+id);
   const notesL=await fetchNotes('structure',id);
   const inter=await fetchInteractions(l.structure_porteuse_id); window.INTER_CACHE=inter;
@@ -528,7 +534,7 @@ async function openLieu(id,fromRoute){
     <div class="fgrid3">
       <div><label class="fl">Téléphone</label><input class="f" id="mTel" value="${esc(l.telephone||'')}"></div>
       <div><label class="fl">Email</label><input class="f" id="mEmail" value="${esc(l.email||'')}"></div>
-      <div><label class="fl">Site</label><input class="f" id="mSite" value="${esc(l.site||'')}"></div>
+      <div><label class="fl">Site</label><input class="f" id="mSite" value="${esc(l.site||'')}" placeholder="voir aussi Web & réseaux"></div>
     </div>
     ${(l.a_propos||l.sous_types||l.facebook)?`<div class="sec-t">ℹ️ À propos${l.source?' <span class="mini" style="text-transform:none;letter-spacing:0">(source : '+esc(l.source)+')</span>':''}</div>
     ${l.sous_types?`<p class="mini" style="margin:0 0 6px">${esc(l.sous_types.replace(/\s*\|\s*/g,' · '))}</p>`:''}
@@ -542,7 +548,7 @@ async function openLieu(id,fromRoute){
     <input class="f" id="mProgDetail" value="${esc(l.programmation_detail||'')}" placeholder="Précision libre…" style="margin-top:7px">
     <div class="sec-t">🎟️ Jauges / configurations</div>
     <div id="mJauges">${js.map(j=>`<div class="flex center" style="gap:8px;margin-bottom:6px" data-jid="${j.id}"><input class="f jl" value="${esc(j.label)}" style="width:160px"><input class="f jc" type="number" value="${j.capacite}" style="width:110px"><button class="btn sm danger" onclick="delJauge(${j.id},this)">✕</button></div>`).join('')}</div>
-    <div class="flex center" style="gap:8px"><input class="f" id="njLabel" placeholder="assis / debout / totale…" style="width:160px"><input class="f" id="njCap" type="number" placeholder="capacité" style="width:110px"><button class="btn sm" onclick="addJauge(${l.id})">＋ Ajouter</button>
+    <div class="flex nodirty center" style="gap:8px"><input class="f" id="njLabel" placeholder="assis / debout / totale…" style="width:160px"><input class="f" id="njCap" type="number" placeholder="capacité" style="width:110px"><button class="btn sm" onclick="addJauge(${l.id})">＋ Ajouter</button>
       <span class="mini" style="margin:0 4px">ou fourchette :</span>
       <input class="f" id="njMin" type="number" placeholder="de" style="width:80px"><input class="f" id="njMax" type="number" placeholder="à" style="width:80px"><button class="btn sm" onclick="addFourchette(${l.id})">＋ Fourchette</button></div>
     <div class="sec-t">👥 Contacts spécialisés</div>
@@ -555,7 +561,10 @@ async function openLieu(id,fromRoute){
       <input class="f cte" value="${esc(c.portable||c.telephone||'')}" placeholder="Tél" style="width:120px">
       <button class="btn sm danger" onclick="delContact(${c.id},this)">✕</button></div>`).join('')}</div>
     <button class="btn sm" onclick="addContact(${l.id},${l.structure_porteuse_id||'null'})">＋ Ajouter un contact</button>
-    <div id="negoBlock">${negoBlock(sp.id,l.id)}</div>
+    <div class="sec-t">📌 Note générale <span class="mini" style="text-transform:none;letter-spacing:0">(information permanente sur ce client — distincte de l'historique des échanges)</span></div>
+    <textarea class="f" id="sNoteGen" style="height:64px" placeholder="Ex. : programme toujours en septembre pour l'année suivante, préfère être appelée le matin, a déjà accueilli Django en 2024…">${esc(sp.note_generale||'')}</textarea>
+    <div id="negoBlock" class="nodirty">${negoBlock(sp.id,l.id)}</div>
+    ${socialsHtml(l,'mS_')}
     <div class="sec-t">🏛️ Structure porteuse (entité juridique — contrats)</div>
     <div class="fgrid3">
       <div><label class="fl">Raison sociale</label><input class="f" id="sNom" value="${esc(sp.nom||'')}"></div>
@@ -568,7 +577,7 @@ async function openLieu(id,fromRoute){
       <div><label class="fl">Licence(s)</label><input class="f" id="sLic" value="${esc((sp.licences||[]).join(', '))}" placeholder="séparées par des virgules"></div>
       <div><label class="fl">TVA intracom.</label><input class="f" id="sTva" value="${esc(sp.tva_intra||'')}"></div>
     </div>
-    <div id="histoBlock">${histoBlock(sp.id,l.id,inter)}</div>
+    <div id="histoBlock" class="nodirty">${histoBlock(sp.id,l.id,inter)}</div>
     ${sp.id?`<div class="sec-t">⚙️ Gestion de la fiche</div>
     ${sp.blacklist?`<p class="mini" style="color:var(--red)">🚫 Blacklistée${sp.blacklist_motif?' — motif : '+esc(sp.blacklist_motif):''}</p>`:''}
     <div class="flex wrap-f" style="gap:7px">
@@ -692,7 +701,7 @@ async function fetchNotes(entite,id){
 }
 function notesHtml(entite,id,list){
   return `<div class="sec-t">📝 Notes & commentaires</div>
-  <div class="flex" style="gap:7px;margin-bottom:9px"><input class="f" id="noteTxt" placeholder="Note… @marie ou @sandrine pour notifier (auteur : ${esc(window.USER||'moi')})" onkeydown="if(event.key==='Enter')addNote('${entite}',${id})" style="flex:1"><button class="btn sm primary" onclick="addNote('${entite}',${id})">＋ Note</button></div>
+  <div class="flex nodirty" style="gap:7px;margin-bottom:9px"><input class="f" id="noteTxt" placeholder="Note… @marie ou @sandrine pour notifier (auteur : ${esc(window.USER||'moi')})" onkeydown="if(event.key==='Enter')addNote('${entite}',${id})" style="flex:1"><button class="btn sm primary" onclick="addNote('${entite}',${id})">＋ Note</button></div>
   <div id="notesList">${list.map(n=>`<div style="padding:7px 0;border-bottom:1px solid var(--line)"><span class="mini"><b>${esc(n.auteur||'—')}</b> · ${(n.created_at||'').slice(0,16).replace('T',' ')}</span><div style="font-size:13px;margin-top:2px">${esc(n.contenu)}</div></div>`).join('')||'<span class="mini">Aucune note pour l\'instant.</span>'}</div>`;
 }
 async function addNote(entite,id){
@@ -776,6 +785,7 @@ function renderMedias(){
 }
 async function openMedia(id,fromRoute){
   const m=(DB.medias||[]).find(x=>x.id===id); if(!m){toast('Média introuvable',true);return;}
+  if(!fromRoute&&window.DIRTY&&!(await guardDirty()))return; window.DIRTY=false; window.SAVE_FN=null;
   if(!fromRoute)setHash('/media/'+id);
   const notesM=await fetchNotes('media',id);
   const row=(k,v,link)=>v?`<div><label class="fl">${k}</label><div style="font-size:13px">${link?`<a href="${esc(link)}" target="_blank">${esc(v)}</a>`:esc(v)}</div></div>`:'';
@@ -941,7 +951,7 @@ function histoBlock(spId,lieuId,inter,filt){
   const projs=(DB.projList||[]).filter(p=>p.actif!==false);
   const list=inter.filter(i=>!filt||i.statut===filt);
   return `<div class="sec-t">📞 Historique des échanges <span class="mini" style="text-transform:none;letter-spacing:0">(${inter.length})</span></div>
-  <div class="card" style="padding:11px;margin-bottom:10px;background:var(--surface-2)">
+  <div class="card nodirty" style="padding:11px;margin-bottom:10px;background:var(--surface-2)">
     <div class="fgrid3" style="gap:7px">
       <div><label class="fl">Date</label><input class="f" id="hDate" type="date" value="${today()}"></div>
       <div><label class="fl">Type d'échange</label><select class="f" id="hType">${Object.entries(INTER_TYPES).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></div>
@@ -1038,8 +1048,13 @@ async function renderTaches(){
 async function relanceFaiteTache(id){await sb.from('interactions').update({relance_faite:true}).eq('id',id);toast('✓ Fait');await reloadNegos();renderTaches();}
 
 /* ===== Historique des versions ===== */
-const APP_VERSION='2.0';
+const APP_VERSION='2.1';
 const CHANGELOG=[
+ ['2.1','4 septembre 2026','Fiabilité',[
+   'Alerte « modifications non enregistrées » (Enregistrer / Quitter sans enregistrer / Annuler) à la fermeture d\'une fiche, au changement de fiche ou d\'onglet, à la fermeture du navigateur',
+   'Après Enregistrer, la fiche reste ouverte : confirmation discrète « Modifications enregistrées »',
+   'Note générale permanente sous les contacts, distincte de l\'historique des échanges',
+   'Web & réseaux sociaux (site, Facebook, Instagram, LinkedIn, TikTok, YouTube, autre) sur les structures et les projets, liens cliquables']],
  ['2.0','4 septembre 2026','Navigation multi-onglets',[
    'Chaque fiche (structure, projet, date, média) et chaque onglet a sa propre adresse : clic droit → « Ouvrir dans un nouvel onglet », Cmd/Ctrl + clic',
    'La recherche en cours (filtres, périodes, distance, recherche avancée) est conservée dans l\'adresse : rechargement, partage, retour arrière',
@@ -1177,13 +1192,17 @@ document.addEventListener('click',e=>{
   let n=t.nextElementSibling;
   while(n&&!n.classList.contains('sec-t')){n.style.display=fold?'none':'';n=n.nextElementSibling;}
 });
-function closeModal(fromRoute){document.getElementById('overlay').classList.remove('open');if(!fromRoute&&/^#\/(lieu|projet|date|media)\//.test(location.hash))setHash('/'+window.CURRENT_TAB+(window.CURRENT_TAB==='annuaire'?buildQS():''),true);}
+function closeModal(fromRoute){
+  if(!fromRoute&&window.DIRTY&&!window.FORCE_CLOSE){guardDirty().then(ok=>{if(ok){window.FORCE_CLOSE=true;closeModal();window.FORCE_CLOSE=false;}});return;}
+  document.getElementById('overlay').classList.remove('open');window.DIRTY=false;window.SAVE_FN=null;
+  if(!fromRoute&&/^#\/(lieu|projet|date|media)\//.test(location.hash))setHash('/'+window.CURRENT_TAB+(window.CURRENT_TAB==='annuaire'?buildQS():''),true);}
 function getMonths(el){return [...document.querySelectorAll('#'+el+' .chip.on')].map(c=>+c.dataset.m);}
 async function saveLieu(id){
   const l=DB.lieux.find(x=>x.id===id);
   const g=x=>document.getElementById(x).value.trim()||null;
   const selTypes=[...document.querySelectorAll('.chip.typ.on')].map(c=>+c.dataset.t);
-  const lieuUpd={nom:g('mNom'),types:selTypes,type_id:selTypes[0]||null,adresse:g('mAdr'),cp:g('mCp'),ville:g('mVille'),region:g('mReg'),pays:g('mPays'),telephone:g('mTel'),email:g('mEmail'),site:g('mSite'),
+  const soc=socialsRead('mS_'); if(!soc.site)soc.site=g('mSite');
+  const lieuUpd={...soc,nom:g('mNom'),types:selTypes,type_id:selTypes[0]||null,adresse:g('mAdr'),cp:g('mCp'),ville:g('mVille'),region:g('mReg'),pays:g('mPays'),telephone:g('mTel'),email:g('mEmail'),
     diffusion_mois:getMonths('mDiff'),diffusion_detail:g('mDiffDetail'),programmation_mois:getMonths('mProg'),programmation_detail:g('mProgDetail'),
     esthetiques:[...document.querySelectorAll('.chip.esth.on')].map(c=>+c.dataset.e)};
   const {error:e1}=await sb.from('lieux').update(lieuUpd).eq('id',id);
@@ -1200,11 +1219,11 @@ async function saveLieu(id){
   // structure porteuse
   let e2=null;
   if(l.structure_porteuse_id){
-    const lic=g('sLic'); const r=await sb.from('structures_porteuses').update({nom:g('sNom'),forme_juridique:g('sForme'),qualif:document.getElementById('sQualif').value,signataire:g('sSign'),qualite_signataire:g('sQual'),siret:g('sSiret'),ape:g('sApe'),tva_intra:g('sTva'),licences:lic?lic.split(',').map(s=>s.trim()):null}).eq('id',l.structure_porteuse_id);
+    const lic=g('sLic'); const r=await sb.from('structures_porteuses').update({note_generale:g('sNoteGen'),nom:g('sNom'),forme_juridique:g('sForme'),qualif:document.getElementById('sQualif').value,signataire:g('sSign'),qualite_signataire:g('sQual'),siret:g('sSiret'),ape:g('sApe'),tva_intra:g('sTva'),licences:lic?lic.split(',').map(s=>s.trim()):null}).eq('id',l.structure_porteuse_id);
     e2=r.error;
   }
   if(e1||e2){toast('Erreur : '+((e1||e2).message),true);return;}
-  toast('✓ Fiche enregistrée'); closeModal(); await loadAll();
+  window.DIRTY=false; toast('✓ Modifications enregistrées'); const st=document.querySelector('.modal-b')?.scrollTop||window.scrollY; await loadAll(); await openLieu(id,true); window.scrollTo(0,st);
 }
 async function addJauge(lieuId){
   const lab=document.getElementById('njLabel').value.trim(), cap=+document.getElementById('njCap').value;
@@ -1260,10 +1279,37 @@ async function lierDate(dateId){
   toast('✓ Date rattachée à '+l.nom); await loadAll(); switchTab('rappro');
 }
 
+/* ===== LOT I : MODIFICATIONS NON ENREGISTRÉES ===== */
+window.DIRTY=false; window.SAVE_FN=null; let dirtyResolver=null;
+function markDirty(){window.DIRTY=true;}
+document.addEventListener('input',e=>{if(e.target.closest('#modal')&&!e.target.closest('.nodirty'))window.DIRTY=true;});
+document.addEventListener('change',e=>{if(e.target.closest('#modal')&&!e.target.closest('.nodirty'))window.DIRTY=true;});
+document.addEventListener('click',e=>{const c=e.target.closest('#modal .chip');if(c&&!c.closest('.nodirty'))window.DIRTY=true;});
+function guardDirty(){
+  if(!window.DIRTY)return Promise.resolve(true);
+  document.getElementById('confirmOverlay').classList.add('open');
+  return new Promise(res=>{dirtyResolver=res;});
+}
+async function resolveDirty(choice){
+  document.getElementById('confirmOverlay').classList.remove('open');
+  const r=dirtyResolver; dirtyResolver=null;
+  if(choice==='save'){if(window.SAVE_FN){await window.SAVE_FN();}if(window.DIRTY){r&&r(false);return;}r&&r(true);}
+  else if(choice==='discard'){window.DIRTY=false;r&&r(true);}
+  else r&&r(false);
+}
+window.addEventListener('beforeunload',e=>{if(window.DIRTY){e.preventDefault();e.returnValue='';}});
+const SOCIALS=[['site','🌐 Site'],['facebook','📘 Facebook'],['instagram','📸 Instagram'],['linkedin','💼 LinkedIn'],['tiktok','🎵 TikTok'],['youtube','▶️ YouTube'],['autre_lien','🔗 Autre lien']];
+const absUrl=u=>u?(u.startsWith('http')?u:'https://'+u):'';
+function socialsHtml(o,prefix){
+  return `<div class="sec-t">🌐 Web & réseaux sociaux</div>
+  <div class="fgrid3">${SOCIALS.map(([k,lab])=>`<div><label class="fl">${lab}${o[k]?` <a href="${esc(absUrl(o[k]))}" target="_blank" rel="noopener" class="mini" style="text-transform:none;letter-spacing:0">ouvrir ↗</a>`:''}</label><input class="f" id="${prefix}${k}" value="${esc(o[k]||'')}" placeholder="https://…"></div>`).join('')}</div>`;
+}
+function socialsRead(prefix){const o={};SOCIALS.forEach(([k])=>{const el=document.getElementById(prefix+k);if(el)o[k]=el.value.trim()||null;});return o;}
+
 /* ===== LOT H : ROUTAGE PAR URL (multi-onglets, liens réels, recherche conservée) ===== */
 const TABS=['annuaire','pilotage','projets','dates','billet','renta','medias','rappro'];
 window.CURRENT_TAB='annuaire'; window.ROUTING=false;
-function setHash(path,replace){const h='#'+path;if(location.hash===h)return;window.ROUTING=true;if(replace)history.replaceState(null,'',h);else history.pushState(null,'',h);setTimeout(()=>window.ROUTING=false,0);}
+function setHash(path,replace){const h='#'+path;window.LAST_HASH=h;if(location.hash===h)return;window.ROUTING=true;if(replace)history.replaceState(null,'',h);else history.pushState(null,'',h);setTimeout(()=>window.ROUTING=false,0);}
 function buildQS(){
   const g=x=>document.getElementById(x)?.value||'';const p=new URLSearchParams();
   const put=(k,v)=>{if(v)p.set(k,v);};
@@ -1287,6 +1333,8 @@ async function applyQS(qs){
 }
 function syncHashFromFilters(){if(window.CURRENT_TAB==='annuaire'&&!document.getElementById('overlay').classList.contains('open'))setHash('/annuaire'+buildQS(),true);}
 async function routeFromHash(){
+  if(window.DIRTY){const ok=await guardDirty();if(!ok){setHash((window.LAST_HASH||'#/annuaire').slice(1),true);return;}}
+  window.LAST_HASH=location.hash;
   const raw=(location.hash||'#/annuaire').slice(1);const [path,qs]=raw.split('?');const parts=path.split('/').filter(Boolean);const k=parts[0]||'annuaire';const id=+parts[1];
   if(TABS.includes(k)){closeModal(true);switchTab(k,true);if(k==='annuaire'){await applyQS(qs);renderList();}return;}
   if(k==='lieu'&&id){switchTab('annuaire',true);openLieu(id,true);return;}
@@ -1611,8 +1659,9 @@ function exportDatesCSV(){
   a.download='scenya_dates_'+pname+'_'+new Date().toISOString().slice(0,10)+'.csv';a.click();
   toast('✓ Export CSV ('+rows.length+' dates) — prêt pour les dossiers de subvention');
 }
-function openDate(id,fromRoute){
+async function openDate(id,fromRoute){
   const d=(DB.datesAll||[]).find(x=>x.id===id); if(!d){toast('Date introuvable',true);return;}
+  if(!fromRoute&&window.DIRTY&&!(await guardDirty()))return; window.DIRTY=false; window.SAVE_FN=()=>saveDate(id);
   if(!fromRoute)setHash('/date/'+id);
   const p=(DB.projList||[]).find(x=>x.id===d.projet_id);const lu=DB.dateLineup[id]||[];
   const dl=p?DB.deals[p.id]:null;const taux=Math.round((dl?.taux_commission??0.12)*100);
@@ -1665,7 +1714,7 @@ async function saveDate(id){
       remplacant:div.querySelector('.mr2').checked}).eq('id',+div.dataset.mid);
   }
   if(error){toast('Erreur : '+error.message,true);return;}
-  toast('✓ Date enregistrée'); closeModal(); await loadDates(); await loadAll();
+  window.DIRTY=false; toast('✓ Modifications enregistrées'); const st=window.scrollY; await loadDates(); await loadAll(); await openDate(id,true); window.scrollTo(0,st);
 }
 async function addDateMus(dateId){
   const nom=document.getElementById('dmNom').value.trim();
@@ -1740,6 +1789,7 @@ function renderProjets(){
 }
 async function openProjet(id,fromRoute){
   const p=(DB.projList||[]).find(x=>x.id===id); if(!p){toast('Projet introuvable',true);return;}
+  if(!fromRoute&&window.DIRTY&&!(await guardDirty()))return; window.DIRTY=false; window.SAVE_FN=()=>saveProjet(id);
   if(!fromRoute)setHash('/projet/'+id);
   const notesP=await fetchNotes('projet',id);
   const d=DB.deals[id]||{};const lu=DB.lineup[id]||[];const iv=DB.interv[id]||[];const dc=DB.docs[id]||[];
@@ -1760,6 +1810,7 @@ async function openProjet(id,fromRoute){
     <input class="f" id="pNewArtiste" placeholder="Nouvel artiste…" style="width:180px"><button class="btn sm" onclick="addArtiste(${id})">＋ Artiste</button></div>
     <label class="fl" style="margin-top:12px">Pitch commercial (modifiable avant chaque envoi)</label>
     <textarea class="f" id="pPitch" style="height:56px">${esc(p.pitch||'')}</textarea>
+    ${socialsHtml(p,'pS_')}
     <div class="sec-t">🤝 Deal — alimente automatiquement commissions & objectifs</div>
     <div class="fgrid3">
       <div><label class="fl">Taux de commission (%)</label><input class="f" id="dTaux" type="number" step="0.5" value="${Math.round((d.taux_commission??0.12)*1000)/10}"></div>
@@ -1810,7 +1861,7 @@ async function openProjet(id,fromRoute){
 function updTotal(pid){let t=0;document.querySelectorAll('#pLineup .lc').forEach(i=>t+=+i.value||0);document.getElementById('pTotal').textContent=t.toLocaleString('fr-FR')+' €';}
 async function saveProjet(id){
   const g=x=>document.getElementById(x).value.trim()||null;
-  const {error:e1}=await sb.from('projets').update({nom:g('pNom'),esthetique_id:+document.getElementById('pEsth').value||null,
+  const {error:e1}=await sb.from('projets').update({...socialsRead('pS_'),nom:g('pNom'),esthetique_id:+document.getElementById('pEsth').value||null,
     actif:document.getElementById('pActif').value==='true',pitch:g('pPitch'),analyse_strategique:g('pAnalyse'),
     interets_strategiques:[...document.querySelectorAll('.chip.intstrat.on')].map(c=>c.dataset.i)}).eq('id',id);
   const {error:e2}=await sb.from('deals').upsert({projet_id:id,taux_commission:(+document.getElementById('dTaux').value||12)/100,
@@ -1831,7 +1882,7 @@ async function saveProjet(id){
   await sb.from('projet_artistes').delete().eq('projet_id',id);
   for(const aid of selArts){await sb.from('projet_artistes').insert({projet_id:id,artiste_id:aid,lead:aid===leadId});}
   if(e1||e2){toast('Erreur : '+((e1||e2).message),true);return;}
-  toast('✓ Projet enregistré'); closeModal(); await loadProjets();
+  window.DIRTY=false; toast('✓ Modifications enregistrées'); const st=window.scrollY; await loadProjets(); await openProjet(id,true); window.scrollTo(0,st);
 }
 async function addArtiste(pid){
   const nom=document.getElementById('pNewArtiste').value.trim();
