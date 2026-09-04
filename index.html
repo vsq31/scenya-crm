@@ -144,7 +144,7 @@
 <div id="appView" style="display:none">
   <div class="topbar">
     <div class="logo">S</div>
-    <div><h1>Scenya CRM</h1><div class="sub"><span onclick="openChangelog()" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px" title="Historique des versions">v1.7</span> · agence de booking</div></div>
+    <div><h1>Scenya CRM</h1><div class="sub"><span onclick="openChangelog()" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px" title="Historique des versions">v1.8</span> · agence de booking</div></div>
     <div class="tabs">
       <div class="tab on" data-v="annuaire" onclick="switchTab('annuaire')">🏛️ Annuaire</div>
       <div class="tab" data-v="pilotage" onclick="switchTab('pilotage')">📊 Pilotage</div>
@@ -172,8 +172,8 @@
       <div class="card">
         <div class="flex wrap-f" style="gap:10px;align-items:flex-end">
           <div style="flex:1;min-width:160px"><label class="fl">Recherche</label><input class="f" id="fTxt" placeholder="Nom / ville / contact…" oninput="renderList()"></div>
-          <div><label class="fl">Typologie</label><select class="f" id="fType" onchange="renderList()" style="width:150px"></select></div>
-          <div><label class="fl">Esthétique</label><select class="f" id="fEsth" onchange="renderList()" style="width:140px"></select></div>
+          <div><label class="fl">Typologie <span class="mini">contient</span></label><select class="f" id="fType" onchange="renderList()" style="width:150px"></select></div>
+          <div><label class="fl">Esthétique <span class="mini">contient</span></label><select class="f" id="fEsth" onchange="renderList()" style="width:140px"></select></div>
           <div><label class="fl">Région</label><select class="f" id="fReg" onchange="renderList()" style="width:170px"></select></div>
           <div><label class="fl">Jauge de</label><input class="f" id="fJmin" type="number" placeholder="min" oninput="renderList()" style="width:80px"></div>
           <div><label class="fl">à</label><input class="f" id="fJmax" type="number" placeholder="max" oninput="renderList()" style="width:80px"></div>
@@ -373,7 +373,7 @@ async function loadAll(){
   DB.negos=ng.data; DB.negoBySp={}; ng.data.forEach(n=>{(DB.negoBySp[n.structure_porteuse_id]=DB.negoBySp[n.structure_porteuse_id]||[]).push(n);});
   DB.profils=pf.data; const me=pf.data.find(p=>p.handle===window.USER); window.USER_PRENOM=me?me.prenom:(window.USER||'moi'); window.ROLE=me?me.role:'booker';
   DB.lieuBySp={}; lx.data.forEach(l=>{if(!DB.lieuBySp[l.structure_porteuse_id])DB.lieuBySp[l.structure_porteuse_id]=l.id;});
-  DB.types=lt.data; DB.esths=es.data; DB.lieux=lx.data;
+  DB.types=lt.data; DB.esthsAll=es.data; DB.esths=es.data.filter(e=>e.actif!==false).sort((a,b)=>(a.ordre||100)-(b.ordre||100)||a.nom.localeCompare(b.nom)); DB.lieux=lx.data;
   DB.porteuses={}; sp.data.forEach(s=>DB.porteuses[s.id]=s);
   DB.jauges={}; jg.data.forEach(j=>{(DB.jauges[j.lieu_id]=DB.jauges[j.lieu_id]||[]).push(j);});
   DB.contacts={}; ct.data.forEach(c=>{const k=c.lieu_id||('s'+c.structure_porteuse_id);(DB.contacts[k]=DB.contacts[k]||[]).push(c);});
@@ -410,7 +410,7 @@ const COMPLETUDE=[
  ['Nom du programmateur',(l)=>((DB.contacts[l.id]||[]).some(c=>c.type==='programmation'&&c.nom))],
  ['Email de contact',(l,sp)=>((DB.contacts[l.id]||[]).some(c=>c.email))||!!(l.email||(sp&&sp.email))],
  ['Téléphone',(l,sp)=>((DB.contacts[l.id]||[]).some(c=>c.portable||c.telephone))||!!(l.telephone||(sp&&sp.telephone))],
- ['Typologie',(l)=>!!l.type_id],
+ ['Typologie',(l)=>!!(l.type_id||(l.types&&l.types.length))],
  ['Région',(l)=>!!l.region],
  ['Esthétique',(l)=>(l.esthetiques||[]).length>0],
  ['Période de programmation',(l)=>(l.programmation_mois||[]).length>0],
@@ -428,7 +428,8 @@ function compDot(l){const cp=completude(l);const col=cp.c==='g'?'var(--green)':c
   return `<span title="Complétude ${cp.ok}/${cp.total}${cp.manque.length?' — manque : '+cp.manque.join(', '):''}" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${col};margin-right:7px;vertical-align:middle"></span>`;}
 function lieuMaxJauge(l){const js=DB.jauges[l.id]||[];return js.length?Math.max(...js.map(j=>j.capacite)):null;}
 function typeName(id){const t=DB.types.find(x=>x.id===id);return t?t.nom:'—';}
-function esthNames(ids){return (ids||[]).map(i=>{const e=DB.esths.find(x=>x.id===i);return e?e.nom:null;}).filter(Boolean);}
+function esthNames(ids){return (ids||[]).map(i=>{const e=(DB.esthsAll||DB.esths).find(x=>x.id===i);return e?e.nom:null;}).filter(Boolean);}
+function typeNames(l){const ids=(l.types&&l.types.length)?l.types:(l.type_id?[l.type_id]:[]);return ids.map(i=>{const t=DB.types.find(x=>x.id===i);return t?t.nom:null;}).filter(Boolean);}
 function moisLabel(arr){if(!arr||!arr.length)return '<span class="mini">à renseigner</span>';return arr.sort((a,b)=>a-b).map(m=>MOIS[m-1]).join(', ');}
 
 /* ---------- LISTE + RECHERCHE CROISÉE ---------- */
@@ -447,7 +448,7 @@ function renderList(){
     const sp=DB.porteuses[l.structure_porteuse_id]||{};
     const cts=(DB.contacts[l.id]||[]).map(c=>(c.nom||'')+(c.prenom||'')).join(' ');
     if(q && !((l.nom||'')+' '+(l.ville||'')+' '+cts).toLowerCase().includes(q)) return false;
-    if(ty && l.type_id!==ty) return false;
+    if(ty && !((l.types&&l.types.length)?l.types.includes(ty):l.type_id===ty)) return false;
     if(es && !(l.esthetiques||[]).includes(es)) return false;
     if(rg && l.region!==rg) return false;
     if(jmin||jmax){const mj=lieuMaxJauge(l); if(!mj) return false; if(jmin&&mj<jmin) return false; if(jmax&&mj>jmax) return false;}
@@ -466,7 +467,7 @@ function renderList(){
     const js=DB.jauges[l.id]||[];
     return `<tr class="clik" onclick="openLieu(${l.id})">
       <td class="row-strong">${compDot(l)}${esc(l.nom)}${l.source?' <span class="mini" title="'+esc(l.source)+'">📥</span>':''}</td>
-      <td class="mini">${esc(typeName(l.type_id))}</td>
+      <td class="mini">${esc(typeNames(l).join(' · ')||'—')}</td>
       <td>${esthNames(l.esthetiques).map(n=>`<span class="pill c">${esc(n)}</span>`).join(' ')||'<span class="mini">Non renseigné</span>'}</td>
       <td>${esc(l.ville||'—')} <span class="mini">(${esc(l.departement||'—')})</span></td>
       <td class="mini">${js.length?js.map(j=>j.capacite+' '+j.label).join(' · '):'à renseigner'}</td>
@@ -493,7 +494,7 @@ async function openLieu(id){
     <div class="sec-t">🎪 Lieu / festival / événement</div>
     <div class="fgrid3">
       <div><label class="fl">Nom</label><input class="f" id="mNom" value="${esc(l.nom)}"></div>
-      <div><label class="fl">Typologie</label><select class="f" id="mType">${DB.types.map(t=>`<option value="${t.id}" ${t.id===l.type_id?'selected':''}>${esc(t.nom)}</option>`).join('')}</select></div>
+      <div><label class="fl">Typologies <span class="mini">(plusieurs possibles)</span></label><div>${DB.types.map(t=>`<span class="chip typ ${((l.types&&l.types.length)?l.types:[l.type_id]).includes(t.id)?'on':''}" data-t="${t.id}" onclick="this.classList.toggle('on')">${esc(t.nom)}</span>`).join('')}</div></div>
       <div><label class="fl">Esthétiques</label><div>${DB.esths.map(e=>`<span class="chip esth ${(l.esthetiques||[]).includes(e.id)?'on':''}" data-e="${e.id}" onclick="this.classList.toggle('on')">${esc(e.nom)}</span>`).join('')}</div></div>
     </div>
     <div class="fgrid3">
@@ -627,7 +628,7 @@ async function checkAndCreateStruct(qualif,force){
   }
   const {data:sp,error:e1}=await sb.from('structures_porteuses').insert({nom,ville:g('nsVille')||null,email:g('nsEmail')||null,telephone:g('nsTel')||null,qualif}).select().single();
   if(e1){toast(e1.message,true);return;}
-  const {data:li,error:e2}=await sb.from('lieux').insert({structure_porteuse_id:sp.id,nom,ville:g('nsVille')||null,email:g('nsEmail')||null,telephone:g('nsTel')||null,type_id:+document.getElementById('nsType').value||null,region:g('nsReg')||null}).select().single();
+  const {data:li,error:e2}=await sb.from('lieux').insert({structure_porteuse_id:sp.id,nom,ville:g('nsVille')||null,email:g('nsEmail')||null,telephone:g('nsTel')||null,type_id:+document.getElementById('nsType').value||null,types:[+document.getElementById('nsType').value].filter(Boolean),region:g('nsReg')||null}).select().single();
   if(e2){toast(e2.message,true);return;}
   toast('✓ '+qualif+' « '+nom+' » créé');
   await loadAll(); openLieu(li.id);
@@ -688,9 +689,11 @@ function projColors(i){const P=['#7c5cff','#41d9d9','#ffb454','#3ecf8e','#ff6b9a
 function renderProjSide(){
   const el=document.getElementById('projSide'); if(!el||!DB.projList)return;
   const collapsed=el.classList.contains('collapsed');
-  const projs=DB.projList.filter(p=>p.actif!==false);
+  const fe=window.SIDE_ESTH||'';
+  const projs=DB.projList.filter(p=>p.actif!==false&&(!fe||p.esthetique_id===+fe));
   el.innerHTML=`<div class="ps-item" onclick="toggleSide()" title="Replier / déplier">${collapsed?'»':'«'} <span class="ps-label">Replier</span></div>
     <div class="ps-title">🎷 Projets actifs</div>
+    ${collapsed?'':`<select class="f ps-label" style="width:100%;margin:0 0 6px;padding:5px 8px;font-size:12px" onchange="window.SIDE_ESTH=this.value;renderProjSide()"><option value="">Toutes esthétiques</option>${(DB.esths||[]).filter(e=>e.nom!=='Toutes esthétiques').map(e=>`<option value="${e.id}" ${fe==e.id?'selected':''}>${esc(e.nom)}</option>`).join('')}</select>`}
     ${projs.map((p,i)=>`<div class="ps-item" onclick="openProjet(${p.id})" title="${esc(p.nom)}"><span class="ps-dot" style="background:${projColors(i)}"></span><span class="ps-label">${esc(p.nom)}</span></div>`).join('')}`;
   document.body.classList.toggle('sideOpen',!collapsed);
   document.body.classList.toggle('sideCollapsed',collapsed);
@@ -853,7 +856,7 @@ async function refreshBlocks(spId,lieuId){
   const inter=await fetchInteractions(spId); window.INTER_CACHE=inter;
   const nb=document.getElementById('negoBlock'),hb=document.getElementById('histoBlock');
   if(nb)nb.innerHTML=negoBlock(spId,lieuId); if(hb)hb.innerHTML=histoBlock(spId,lieuId,inter);
-  await loadAll();
+  await loadAll(); await loadDates();
 }
 async function addInteraction(spId,lieuId){
   const g=x=>document.getElementById(x).value;
@@ -913,8 +916,15 @@ async function renderTaches(){
 async function relanceFaiteTache(id){await sb.from('interactions').update({relance_faite:true}).eq('id',id);toast('✓ Fait');await reloadNegos();renderTaches();}
 
 /* ===== Historique des versions ===== */
-const APP_VERSION='1.7';
+const APP_VERSION='1.8';
 const CHANGELOG=[
+ ['1.8','4 septembre 2026','Taxonomie & typologies',[
+   '8 esthétiques principales : Musiques actuelles, Electro, Jazz, Classique, Théâtre, Humour, Jeune public, Toutes esthétiques (liste extensible)',
+   'Anciennes esthétiques regroupées automatiquement (Swing, Manouche, Big band → Jazz ; Chanson, Blues, World, Groove → Musiques actuelles)',
+   'Esthétiques enrichies depuis les sous-genres Prospectacles (Théâtre, Jeune public, Humour, Classique, Electro)',
+   'Plusieurs typologies par structure (Salle + Festival + Producteur…), nouveaux types Association, Producteur, Organisateur d\'événement',
+   'Filtres Typologie et Esthétique en mode « contient »',
+   'Colonne projets filtrable par esthétique']],
  ['1.7','4 septembre 2026','Suivi commercial',[
    'Historique des échanges sur chaque fiche : appel / email / rendez-vous, projet proposé, prix annoncé, contact, commentaire, booker',
    'Statut de négociation par ligne (Intéressé, Option, Confirmé, Refusé, À relancer, Sans réponse) et filtre par statut',
@@ -1039,7 +1049,8 @@ function getMonths(el){return [...document.querySelectorAll('#'+el+' .chip.on')]
 async function saveLieu(id){
   const l=DB.lieux.find(x=>x.id===id);
   const g=x=>document.getElementById(x).value.trim()||null;
-  const lieuUpd={nom:g('mNom'),type_id:+document.getElementById('mType').value,adresse:g('mAdr'),cp:g('mCp'),ville:g('mVille'),region:g('mReg'),pays:g('mPays'),telephone:g('mTel'),email:g('mEmail'),site:g('mSite'),
+  const selTypes=[...document.querySelectorAll('.chip.typ.on')].map(c=>+c.dataset.t);
+  const lieuUpd={nom:g('mNom'),types:selTypes,type_id:selTypes[0]||null,adresse:g('mAdr'),cp:g('mCp'),ville:g('mVille'),region:g('mReg'),pays:g('mPays'),telephone:g('mTel'),email:g('mEmail'),site:g('mSite'),
     diffusion_mois:getMonths('mDiff'),diffusion_detail:g('mDiffDetail'),programmation_mois:getMonths('mProg'),programmation_detail:g('mProgDetail'),
     esthetiques:[...document.querySelectorAll('.chip.esth.on')].map(c=>+c.dataset.e)};
   const {error:e1}=await sb.from('lieux').update(lieuUpd).eq('id',id);
@@ -1544,7 +1555,7 @@ function artNames(pid){return (DB.projArt[pid]||[]).map(x=>{const a=DB.artistes.
 function totCachets(pid){return (DB.lineup[pid]||[]).reduce((s,m)=>s+(+m.cachet||0),0);}
 function renderProjets(){
   document.getElementById('projBody').innerHTML=(DB.projList||[]).map(p=>{
-    const d=DB.deals[p.id]||{};const lu=DB.lineup[p.id]||[];const e=DB.esths.find(x=>x.id===p.esthetique_id);
+    const d=DB.deals[p.id]||{};const lu=DB.lineup[p.id]||[];const e=(DB.esthsAll||DB.esths).find(x=>x.id===p.esthetique_id);
     return `<tr class="clik" onclick="openProjet(${p.id})">
       <td class="row-strong">${esc(p.nom)}</td>
       <td class="mini">${artNames(p.id)||'—'}</td>
