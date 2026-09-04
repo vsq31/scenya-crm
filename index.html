@@ -144,7 +144,7 @@
 <div id="appView" style="display:none">
   <div class="topbar">
     <div class="logo">S</div>
-    <div><h1>Scenya CRM</h1><div class="sub"><span onclick="openChangelog()" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px" title="Historique des versions">v1.6</span> · agence de booking</div></div>
+    <div><h1>Scenya CRM</h1><div class="sub"><span onclick="openChangelog()" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px" title="Historique des versions">v1.7</span> · agence de booking</div></div>
     <div class="tabs">
       <div class="tab on" data-v="annuaire" onclick="switchTab('annuaire')">🏛️ Annuaire</div>
       <div class="tab" data-v="pilotage" onclick="switchTab('pilotage')">📊 Pilotage</div>
@@ -212,6 +212,7 @@
         <div style="flex:1"></div>
         <span class="mini">tous les chiffres sont cliquables → dates génératrices</span>
       </div></div>
+      <div class="card" id="pTaches"><b>✅ Mes tâches</b> <span class="mini">chargement…</span></div>
       <div class="kpis" id="pKpis"></div>
       <div class="card" id="pObjectif"></div>
       <div class="flex" style="gap:15px;align-items:flex-start">
@@ -356,17 +357,22 @@ async function fetchAll(table,select,order){
   return {data:all,error:null};
 }
 async function loadAll(){
-  const [lt,es,lx,sp,jg,ct,dt,pj]=await Promise.all([
+  const [lt,es,lx,sp,jg,ct,ng,pf,dt,pj]=await Promise.all([
     sb.from('lieu_types').select('*'),
     sb.from('esthetiques').select('*'),
     fetchAll('lieux','*','nom'),
     fetchAll('structures_porteuses','*','id'),
     fetchAll('jauges','*','id'),
     fetchAll('contacts','*','id'),
+    fetchAll('negociations','*','id'),
+    sb.from('profils').select('*'),
     sb.from('dates').select('id,date_spectacle,lieu_texte,ville_texte,projet_id').is('lieu_id',null).order('date_spectacle'),
     sb.from('projets').select('id,nom')
   ]);
-  for(const r of [lt,es,lx,sp,jg,ct,dt,pj]) if(r.error){toast('Erreur chargement : '+r.error.message,true);return false;}
+  for(const r of [lt,es,lx,sp,jg,ct,ng,pf,dt,pj]) if(r.error){toast('Erreur chargement : '+r.error.message,true);return false;}
+  DB.negos=ng.data; DB.negoBySp={}; ng.data.forEach(n=>{(DB.negoBySp[n.structure_porteuse_id]=DB.negoBySp[n.structure_porteuse_id]||[]).push(n);});
+  DB.profils=pf.data; const me=pf.data.find(p=>p.handle===window.USER); window.USER_PRENOM=me?me.prenom:(window.USER||'moi'); window.ROLE=me?me.role:'booker';
+  DB.lieuBySp={}; lx.data.forEach(l=>{if(!DB.lieuBySp[l.structure_porteuse_id])DB.lieuBySp[l.structure_porteuse_id]=l.id;});
   DB.types=lt.data; DB.esths=es.data; DB.lieux=lx.data;
   DB.porteuses={}; sp.data.forEach(s=>DB.porteuses[s.id]=s);
   DB.jauges={}; jg.data.forEach(j=>{(DB.jauges[j.lieu_id]=DB.jauges[j.lieu_id]||[]).push(j);});
@@ -474,6 +480,7 @@ function renderList(){
 async function openLieu(id){
   const l=DB.lieux.find(x=>x.id===id); if(!l)return;
   const notesL=await fetchNotes('structure',id);
+  const inter=await fetchInteractions(l.structure_porteuse_id); window.INTER_CACHE=inter;
   const cp=completude(l);
   const sp=DB.porteuses[l.structure_porteuse_id]||{};
   const js=DB.jauges[l.id]||[];
@@ -524,6 +531,7 @@ async function openLieu(id){
       <input class="f cte" value="${esc(c.portable||c.telephone||'')}" placeholder="Tél" style="width:120px">
       <button class="btn sm danger" onclick="delContact(${c.id},this)">✕</button></div>`).join('')}</div>
     <button class="btn sm" onclick="addContact(${l.id},${l.structure_porteuse_id||'null'})">＋ Ajouter un contact</button>
+    <div id="negoBlock">${negoBlock(sp.id,l.id)}</div>
     <div class="sec-t">🏛️ Structure porteuse (entité juridique — contrats)</div>
     <div class="fgrid3">
       <div><label class="fl">Raison sociale</label><input class="f" id="sNom" value="${esc(sp.nom||'')}"></div>
@@ -536,6 +544,7 @@ async function openLieu(id){
       <div><label class="fl">Licence(s)</label><input class="f" id="sLic" value="${esc((sp.licences||[]).join(', '))}" placeholder="séparées par des virgules"></div>
       <div><label class="fl">TVA intracom.</label><input class="f" id="sTva" value="${esc(sp.tva_intra||'')}"></div>
     </div>
+    <div id="histoBlock">${histoBlock(sp.id,l.id,inter)}</div>
     ${sp.id?`<div class="sec-t">⚙️ Gestion de la fiche</div>
     ${sp.blacklist?`<p class="mini" style="color:var(--red)">🚫 Blacklistée${sp.blacklist_motif?' — motif : '+esc(sp.blacklist_motif):''}</p>`:''}
     <div class="flex wrap-f" style="gap:7px">
@@ -765,9 +774,154 @@ function exportMediasCSV(){
   toast('⬇️ '+rows.length+' média(s) exporté(s)');
 }
 
+/* ===== LOT F1 : NÉGOCIATIONS, HISTORIQUE COMMERCIAL, TÂCHES ===== */
+const NEGO_ST={jamais_propose:['Jamais proposé','m'],interet:['Intéressé','c'],option:['Option','b'],confirme:['Confirmé','g'],refuse:['Refusé','r'],a_relancer:['À relancer','a'],sans_reponse:['Sans réponse','m']};
+const NEGO_ORDER=['option','confirme','interet','a_relancer','sans_reponse','jamais_propose','refuse'];
+const INTER_TYPES={appel:'📞 Appel',email:'✉️ Email',rdv:'🤝 Rendez-vous',autre:'💬 Autre'};
+const fmtD=d=>d?d.split('-').reverse().join('/'):'—';
+const today=()=>new Date().toISOString().slice(0,10);
+function negoPill(st){const s=NEGO_ST[st]||NEGO_ST.jamais_propose;return `<span class="pill ${s[1]}">${s[0]}</span>`;}
+function prenomOptions(sel){return (DB.profils||[]).map(p=>`<option ${p.prenom===sel?'selected':''}>${esc(p.prenom)}</option>`).join('');}
+async function fetchInteractions(spId){
+  if(!spId)return [];
+  const {data}=await sb.from('interactions').select('*').eq('structure_porteuse_id',spId).order('date_interaction',{ascending:false}).order('id',{ascending:false});
+  return data||[];
+}
+async function reloadNegos(){
+  const {data}=await fetchAll('negociations','*','id'); if(!data)return;
+  DB.negos=data; DB.negoBySp={}; data.forEach(n=>{(DB.negoBySp[n.structure_porteuse_id]=DB.negoBySp[n.structure_porteuse_id]||[]).push(n);});
+}
+/* Bloc « Projets à proposer / intérêt » */
+function negoBlock(spId,lieuId){
+  const negos=DB.negoBySp[spId]||[];
+  const projs=(DB.projList||[]).filter(p=>p.actif!==false);
+  const rows=projs.map(p=>{const n=negos.find(x=>x.projet_id===p.id);return {p,n,st:n?n.statut:'jamais_propose'};})
+    .sort((a,b)=>NEGO_ORDER.indexOf(a.st)-NEGO_ORDER.indexOf(b.st)||a.p.nom.localeCompare(b.p.nom));
+  const actifs=rows.filter(r=>r.n).length;
+  return `<div class="sec-t">🎯 Projets à proposer / intérêt <span class="mini" style="text-transform:none;letter-spacing:0">(${actifs} en cours · ${rows.length-actifs} jamais proposés)</span></div>
+  <div class="tbl-wrap"><table><thead><tr><th>Projet</th><th>Statut</th><th>Montant proposé</th><th>Dernier contact</th><th>Prochaine relance</th><th>Booker</th><th></th></tr></thead><tbody>
+  ${rows.map(({p,n,st})=>`<tr${n?'':' style="opacity:.6"'}>
+    <td class="row-strong">${esc(p.nom)}</td><td>${negoPill(st)}</td>
+    <td class="mini">${n&&n.montant_propose?(+n.montant_propose).toLocaleString('fr-FR')+' € HT':'—'}</td>
+    <td class="mini">${n?fmtD(n.derniere_interaction):'—'}</td>
+    <td class="mini">${n&&n.prochaine_relance?fmtD(n.prochaine_relance)+(n.relance_assignee?' · '+esc(n.relance_assignee):''):'—'}</td>
+    <td class="mini">${n?esc(n.booker||'—'):'—'}</td>
+    <td style="white-space:nowrap">${n?(['option','confirme'].includes(st)?(n.date_id?`<button class="btn sm" onclick="openDate(${n.date_id})">📅 Voir la date</button>`:`<button class="btn sm primary" onclick="creerDateNego(${n.id},${lieuId})">📅 Créer la date</button>`):''):`<button class="btn sm" onclick="preremplirEchange(${p.id})">Proposer</button>`}</td></tr>`).join('')}
+  </tbody></table></div>`;
+}
+/* Bloc « Historique des échanges » + saisie rapide */
+function histoBlock(spId,lieuId,inter,filt){
+  filt=filt||'';
+  const cts=(DB.contacts[lieuId]||[]).concat(DB.contacts['s'+spId]||[]);
+  const projs=(DB.projList||[]).filter(p=>p.actif!==false);
+  const list=inter.filter(i=>!filt||i.statut===filt);
+  return `<div class="sec-t">📞 Historique des échanges <span class="mini" style="text-transform:none;letter-spacing:0">(${inter.length})</span></div>
+  <div class="card" style="padding:11px;margin-bottom:10px;background:var(--surface-2)">
+    <div class="fgrid3" style="gap:7px">
+      <div><label class="fl">Date</label><input class="f" id="hDate" type="date" value="${today()}"></div>
+      <div><label class="fl">Type d'échange</label><select class="f" id="hType">${Object.entries(INTER_TYPES).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></div>
+      <div><label class="fl">Projet proposé</label><select class="f" id="hProj"><option value="">— aucun / général —</option>${projs.map(p=>`<option value="${p.id}">${esc(p.nom)}</option>`).join('')}</select></div>
+      <div><label class="fl">Personne contactée</label><input class="f" id="hContact" list="hContactList" placeholder="Nom"><datalist id="hContactList">${cts.map(c=>`<option value="${esc([c.prenom,c.nom].filter(Boolean).join(' '))}">`).join('')}</datalist></div>
+      <div><label class="fl">Prix de cession annoncé (€ HT)</label><input class="f" id="hMontant" type="number" placeholder="3500"></div>
+      <div><label class="fl">Statut de négociation</label><select class="f" id="hStatut"><option value="">— inchangé —</option>${Object.entries(NEGO_ST).filter(([k])=>k!=='jamais_propose').map(([k,v])=>`<option value="${k}">${v[0]}</option>`).join('')}</select></div>
+      <div style="grid-column:span 3"><label class="fl">Commentaire</label><input class="f" id="hComment" placeholder="intéressée pour automne 2027…" onkeydown="if(event.key==='Enter')addInteraction(${spId},${lieuId})"></div>
+      <div><label class="fl">À relancer le</label><input class="f" id="hRelance" type="date"></div>
+      <div><label class="fl">Relance assignée à</label><select class="f" id="hAssign">${prenomOptions(window.USER_PRENOM)}</select></div>
+      <div><label class="fl">Booker</label><select class="f" id="hBooker">${prenomOptions(window.USER_PRENOM)}</select></div>
+    </div>
+    <div class="flex" style="gap:7px;margin-top:8px;align-items:center"><button class="btn sm primary" onclick="addInteraction(${spId},${lieuId})">＋ Ajouter l'échange</button>
+      <span class="mini">raccourcis relance :</span>${[['+1 sem',7],['+1 mois',30],['+3 mois',90]].map(([l,d])=>`<button class="btn sm" onclick="document.getElementById('hRelance').value=addDays(${d})">${l}</button>`).join('')}</div>
+  </div>
+  <div class="flex between center" style="margin-bottom:6px"><span class="mini">Filtrer :</span><select class="f" style="width:160px" onchange="document.getElementById('histoBlock').innerHTML=histoBlock(${spId},${lieuId},window.INTER_CACHE,this.value)"><option value="">Tous les échanges</option>${Object.entries(NEGO_ST).filter(([k])=>k!=='jamais_propose').map(([k,v])=>`<option value="${k}" ${k===filt?'selected':''}>${v[0]}</option>`).join('')}</select></div>
+  ${list.length?list.map(i=>{const p=(DB.projList||[]).find(x=>x.id===i.projet_id);const late=i.relance_date&&!i.relance_faite&&i.relance_date<today();
+    return `<div class="card" style="padding:9px 11px;margin-bottom:6px">
+    <div class="flex between center wrap-f" style="gap:6px">
+      <div><b>${fmtD(i.date_interaction)}</b> · ${INTER_TYPES[i.type]||i.type} ${p?'· <b>'+esc(p.nom)+'</b>':''} ${i.contact_nom?'· '+esc(i.contact_nom):''} ${i.montant?'· <b>'+(+i.montant).toLocaleString('fr-FR')+' € HT</b>':''} <span class="mini">· ${esc(i.booker||'—')}</span></div>
+      <div>${i.statut?negoPill(i.statut):''}</div></div>
+    ${i.commentaire?`<div style="font-size:13px;margin:4px 0">${esc(i.commentaire)}</div>`:''}
+    <div class="flex between center wrap-f" style="gap:6px;margin-top:4px">
+      <span class="mini" ${late?'style="color:var(--red);font-weight:700"':''}>${i.relance_date?'🔔 Relance '+fmtD(i.relance_date)+(i.relance_assignee?' · '+esc(i.relance_assignee):'')+(i.relance_faite?' ✓ faite':late?' — EN RETARD':''):''}</span>
+      <div class="flex" style="gap:4px;flex-wrap:wrap">
+        ${i.projet_id?['interet','option','confirme','refuse','a_relancer','sans_reponse'].map(s=>`<button class="btn sm" style="padding:2px 7px;font-size:11px${i.statut===s?';font-weight:800;border-color:var(--primary)':''}" onclick="setInterStatut(${i.id},'${s}',${spId},${lieuId})">${NEGO_ST[s][0]}</button>`).join(''):''}
+        ${i.relance_date&&!i.relance_faite?`<button class="btn sm" style="padding:2px 7px;font-size:11px" onclick="relanceFaite(${i.id},${spId},${lieuId})">✓ Relance faite</button>`:''}
+        <button class="btn sm danger" style="padding:2px 7px;font-size:11px" onclick="delInteraction(${i.id},${spId},${lieuId})">✕</button></div></div></div>`;}).join(''):'<span class="mini">Aucun échange enregistré pour l\'instant.</span>'}`;
+}
+function addDays(n){const d=new Date();d.setDate(d.getDate()+n);return d.toISOString().slice(0,10);}
+function preremplirEchange(projetId){const s=document.getElementById('hProj');if(s){s.value=projetId;document.getElementById('hComment').focus();document.getElementById('histoBlock').scrollIntoView({behavior:'smooth'});}}
+async function refreshBlocks(spId,lieuId){
+  await reloadNegos();
+  const inter=await fetchInteractions(spId); window.INTER_CACHE=inter;
+  const nb=document.getElementById('negoBlock'),hb=document.getElementById('histoBlock');
+  if(nb)nb.innerHTML=negoBlock(spId,lieuId); if(hb)hb.innerHTML=histoBlock(spId,lieuId,inter);
+  await loadAll();
+}
+async function addInteraction(spId,lieuId){
+  const g=x=>document.getElementById(x).value;
+  const row={structure_porteuse_id:spId,projet_id:+g('hProj')||null,date_interaction:g('hDate')||today(),type:g('hType'),contact_nom:g('hContact').trim()||null,
+    montant:+g('hMontant')||null,commentaire:g('hComment').trim()||null,relance_date:g('hRelance')||null,relance_assignee:g('hRelance')?g('hAssign'):null,booker:g('hBooker'),statut:g('hStatut')||null};
+  if(!row.commentaire&&!row.projet_id&&!row.relance_date){toast('Renseigne au moins un projet, un commentaire ou une relance',true);return;}
+  const {error}=await sb.from('interactions').insert(row);
+  if(error){toast(error.message,true);return;}
+  if(row.relance_date&&row.relance_assignee&&row.relance_assignee!==window.USER_PRENOM){
+    const dest=(DB.profils||[]).find(p=>p.prenom===row.relance_assignee);
+    const sp=DB.porteuses[spId]||{};
+    if(dest)await sb.from('notifications').insert({destinataire:dest.handle,auteur:window.USER,message:'Relance à faire le '+fmtD(row.relance_date)+' — '+(sp.nom||'')+(row.commentaire?' : '+row.commentaire.slice(0,100):''),entite:'structure',entite_id:lieuId});
+  }
+  toast('✓ Échange enregistré'+(row.relance_date?' · relance le '+fmtD(row.relance_date):''));
+  await refreshBlocks(spId,lieuId);
+}
+async function setInterStatut(id,st,spId,lieuId){const {error}=await sb.from('interactions').update({statut:st}).eq('id',id);if(error){toast(error.message,true);return;}toast('✓ '+NEGO_ST[st][0]);await refreshBlocks(spId,lieuId);}
+async function relanceFaite(id,spId,lieuId){await sb.from('interactions').update({relance_faite:true}).eq('id',id);toast('✓ Relance faite');await refreshBlocks(spId,lieuId);}
+async function delInteraction(id,spId,lieuId){if(!confirm('Supprimer cet échange ?'))return;await sb.from('interactions').delete().eq('id',id);await refreshBlocks(spId,lieuId);}
+/* Négociation → pipeline */
+async function creerDateNego(negoId,lieuId){
+  const n=(DB.negos||[]).find(x=>x.id===negoId); if(!n)return;
+  const d=prompt('Date du spectacle (AAAA-MM-JJ) :',n.dates_envisagees&&/^\d{4}-\d{2}-\d{2}$/.test(n.dates_envisagees)?n.dates_envisagees:'');
+  if(!d||!/^\d{4}-\d{2}-\d{2}$/.test(d)){if(d!==null)toast('Format attendu : AAAA-MM-JJ',true);return;}
+  const {data,error}=await sb.from('dates').insert({projet_id:n.projet_id,lieu_id:n.lieu_id||lieuId,structure_porteuse_id:n.structure_porteuse_id,date_spectacle:d,
+    statut:n.statut==='confirme'?'confirmee':'option',type_contrat:'cession',prix_cession:n.montant_propose||null,booker:n.booker||window.USER_PRENOM,structure_interne_id:1,negociation_id:negoId}).select().single();
+  if(error){toast(error.message,true);return;}
+  await sb.from('negociations').update({date_id:data.id}).eq('id',negoId);
+  toast('✓ Date créée dans le pipeline ('+(n.statut==='confirme'?'confirmée':'option')+')');
+  await loadDates(); await refreshBlocks(n.structure_porteuse_id,lieuId);
+}
+/* Fiche projet : négociations */
+function projNegoHtml(projetId){
+  const list=(DB.negos||[]).filter(n=>n.projet_id===projetId).sort((a,b)=>NEGO_ORDER.indexOf(a.statut)-NEGO_ORDER.indexOf(b.statut));
+  if(!list.length)return '<span class="mini">Aucune négociation — les échanges saisis dans les fiches clients apparaîtront ici.</span>';
+  return `<div class="tbl-wrap"><table><thead><tr><th>Structure</th><th>Statut</th><th>Montant</th><th>Dernier contact</th><th>Relance</th><th>Booker</th></tr></thead><tbody>
+  ${list.map(n=>{const sp=DB.porteuses[n.structure_porteuse_id]||{};const lid=n.lieu_id||DB.lieuBySp[n.structure_porteuse_id];
+    return `<tr class="clik" onclick="closeModal();openLieu(${lid})"><td class="row-strong">${esc(sp.nom||'—')} <span class="mini">${esc(sp.ville||'')}</span></td><td>${negoPill(n.statut)}</td><td class="mini">${n.montant_propose?(+n.montant_propose).toLocaleString('fr-FR')+' €':'—'}</td><td class="mini">${fmtD(n.derniere_interaction)}</td><td class="mini">${n.prochaine_relance?fmtD(n.prochaine_relance)+' · '+esc(n.relance_assignee||''):'—'}</td><td class="mini">${esc(n.booker||'—')}</td></tr>`;}).join('')}
+  </tbody></table></div>`;
+}
+/* Tâches personnelles (Pilotage) */
+async function renderTaches(){
+  const el=document.getElementById('pTaches'); if(!el)return;
+  const {data,error}=await sb.from('interactions').select('*').not('relance_date','is',null).eq('relance_faite',false).order('relance_date');
+  if(error){el.innerHTML='<span class="mini">Erreur tâches : '+esc(error.message)+'</span>';return;}
+  const who=window.TACHES_WHO===undefined?window.USER_PRENOM:window.TACHES_WHO;
+  const list=data.filter(i=>!who||i.relance_assignee===who);
+  const t=today(), wk=addDays(7);
+  const groups=[['🔴 En retard',list.filter(i=>i.relance_date<t)],['🟠 Aujourd\'hui',list.filter(i=>i.relance_date===t)],['🟡 Cette semaine',list.filter(i=>i.relance_date>t&&i.relance_date<=wk)],['⚪ À venir',list.filter(i=>i.relance_date>wk)]];
+  const sel=window.ROLE==='direction'?`<select class="f" style="width:170px" onchange="window.TACHES_WHO=this.value;renderTaches()"><option value="${esc(window.USER_PRENOM)}" ${who===window.USER_PRENOM?'selected':''}>Mes tâches (${esc(window.USER_PRENOM)})</option><option value="" ${who===''?'selected':''}>Toutes (direction)</option>${(DB.profils||[]).filter(p=>p.prenom!==window.USER_PRENOM).map(p=>`<option ${who===p.prenom?'selected':''}>${esc(p.prenom)}</option>`).join('')}</select>`:`<span class="mini">${esc(window.USER_PRENOM)}</span>`;
+  el.innerHTML=`<div class="flex between center wrap-f" style="margin-bottom:8px"><b>✅ Mes tâches — qui dois-je appeler ? <span class="mini">(${list.length})</span></b>${sel}</div>
+  ${groups.map(([lab,arr])=>arr.length?`<div class="mini" style="font-weight:800;margin:8px 0 4px">${lab} (${arr.length})</div>`+arr.map(i=>{const sp=DB.porteuses[i.structure_porteuse_id]||{};const p=(DB.projList||[]).find(x=>x.id===i.projet_id);const lid=DB.lieuBySp[i.structure_porteuse_id];
+    return `<div class="flex between center wrap-f" style="gap:8px;padding:6px 0;border-bottom:1px solid var(--line)">
+      <div><b>${fmtD(i.relance_date)}</b> · <a href="#" onclick="event.preventDefault();openLieu(${lid})" style="font-weight:700">${esc(sp.nom||'—')}</a> ${p?'<span class="pill c">'+esc(p.nom)+'</span>':''} <span class="mini">${esc(i.commentaire||'')}</span> ${i.montant?'<span class="mini">· '+(+i.montant).toLocaleString('fr-FR')+' €</span>':''} ${!who?'<span class="mini">· '+esc(i.relance_assignee||'')+'</span>':''}</div>
+      <button class="btn sm" onclick="relanceFaiteTache(${i.id})">✓ Fait</button></div>`;}).join(''):'').join('')||'<span class="mini">Aucune relance en attente 🎉 — les relances saisies dans l\'historique des échanges apparaissent ici.</span>'}`;
+}
+async function relanceFaiteTache(id){await sb.from('interactions').update({relance_faite:true}).eq('id',id);toast('✓ Fait');await reloadNegos();renderTaches();}
+
 /* ===== Historique des versions ===== */
-const APP_VERSION='1.6';
+const APP_VERSION='1.7';
 const CHANGELOG=[
+ ['1.7','4 septembre 2026','Suivi commercial',[
+   'Historique des échanges sur chaque fiche : appel / email / rendez-vous, projet proposé, prix annoncé, contact, commentaire, booker',
+   'Statut de négociation par ligne (Intéressé, Option, Confirmé, Refusé, À relancer, Sans réponse) et filtre par statut',
+   'Bloc « Projets à proposer / intérêt » : en un coup d\'œil, sur quels projets relancer un programmateur',
+   'Relances datées et assignées → tâches personnelles dans Pilotage (en retard / aujourd\'hui / semaine / à venir), vue Direction',
+   'Option ou Confirmé → création de la date dans le pipeline en un clic, sans ressaisie',
+   'Négociations visibles dans chaque fiche projet']],
  ['1.6','4 septembre 2026','Base Prospectacles',[
    'Import de 8 687 structures jazz (France) depuis la base Prospectacles du 28/08/2026',
    'Fiches existantes enrichies sans écrasement (jauge, calendrier, esthétique, site, description)',
@@ -1155,7 +1309,7 @@ function pilotageDates(){
 }
 function eur(n){return Math.round(n).toLocaleString('fr-FR')+' €';}
 function renderPilotage(){
-  if(!DB.datesAll)return; fillPilotageFilters();
+  if(!DB.datesAll)return; fillPilotageFilters(); renderTaches();
   const ds=pilotageDates();
   const real=ds.filter(d=>['confirmee','realisee'].includes(d.statut));
   const opts=ds.filter(d=>d.statut==='option');
@@ -1458,6 +1612,8 @@ async function openProjet(id){
     <div>${INTERETS.map(i=>`<span class="chip intstrat ${(p.interets_strategiques||[]).includes(i)?'on':''}" data-i="${esc(i)}" onclick="this.classList.toggle('on')">${esc(i)}</span>`).join('')}</div>
     <label class="fl" style="margin-top:9px">Analyse / intérêt stratégique du projet</label>
     <textarea class="f" id="pAnalyse" style="height:56px">${esc(p.analyse_strategique||'')}</textarea>
+    <div class="sec-t">🤝 Négociations en cours sur ce projet</div>
+    ${projNegoHtml(id)}
     <div class="sec-t">📁 Documents & kit promo</div>
     <div id="pDocs">${dc.map(x=>`<div class="flex center" style="gap:7px;margin-bottom:6px" data-did="${x.id}">
       <span>${x.externe?'🔗':'📄'}</span><b style="font-size:12.5px">${esc(x.nom)}</b><span class="mini" style="flex:1">${esc(x.url||'')}</span>
