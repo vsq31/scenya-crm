@@ -153,7 +153,7 @@
 <div id="appView" style="display:none">
   <div class="topbar">
     <div class="logo">S</div>
-    <div><h1>Scenya CRM</h1><div class="sub"><span onclick="openChangelog()" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px" title="Historique des versions">v2.2</span> · agence de booking</div></div>
+    <div><h1>Scenya CRM</h1><div class="sub"><span onclick="openChangelog()" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px" title="Historique des versions">v2.3</span> · agence de booking</div></div>
     <div class="tabs">
       <a class="tab on" data-v="annuaire" href="#/annuaire" style="text-decoration:none">🏛️ Annuaire</a>
       <a class="tab" data-v="pilotage" href="#/pilotage" style="text-decoration:none">📊 Pilotage</a>
@@ -241,11 +241,15 @@
         <div><label class="fl">Projet</label><select class="f" id="dfProj" onchange="renderDates()" style="width:190px"></select></div>
         <div><label class="fl">Saison (sept→août)</label><select class="f" id="dfSais" onchange="renderDates()" style="width:130px"></select></div>
         <div><label class="fl">Année civile</label><select class="f" id="dfAn" onchange="renderDates()" style="width:110px"></select></div>
-        <div><label class="fl">Statut</label><select class="f" id="dfStat" onchange="renderDates()" style="width:140px"><option value="">Tous</option><option value="prospection">Prospection</option><option value="interet">Intérêt</option><option value="option">Option</option><option value="confirmee">Confirmée</option><option value="realisee">Réalisée</option><option value="annulee">Annulée</option></select></div>
-        <div><label class="fl">Pays</label><select class="f" id="dfPays" onchange="renderDates()" style="width:120px"><option value="">Tous</option><option>France</option><option>Belgique</option></select></div>
+        <div><label class="fl">Artiste</label><select class="f" id="dfArt" onchange="renderDates()" style="width:160px"></select></div>
+        <div><label class="fl">Booker</label><select class="f" id="dfBook" onchange="renderDates()" style="width:120px"></select></div>
+        <div><label class="fl">Du</label><input class="f" id="dfFrom" type="date" onchange="renderDates()" style="width:140px"></div>
+        <div><label class="fl">Au</label><input class="f" id="dfTo" type="date" onchange="renderDates()" style="width:140px"></div>
+        <div><label class="fl">Statut</label><select class="f" id="dfStat" onchange="renderDates()" style="width:170px"><option value="">Tous</option><option value="confirmee,realisee">✅ Confirmées (+ réalisées)</option><option value="option">⏳ Options</option><option value="confirmee,realisee,option">✅⏳ Confirmées + options</option><option value="prospection">Prospection</option><option value="interet">Intérêt</option><option value="option">Option</option><option value="confirmee">Confirmée</option><option value="realisee">Réalisée</option><option value="annulee">Annulée</option></select></div>
+        <div><label class="fl">Pays</label><select class="f" id="dfPays" onchange="renderDates()" style="width:130px"><option value="">Tous</option><option value="France">🇫🇷 France</option><option value="etranger">🌍 Étranger</option></select></div>
         <div><label class="fl">Région</label><select class="f" id="dfReg" onchange="renderDates()" style="width:170px"></select></div>
         <div style="flex:1"></div>
-        <button class="btn primary" onclick="exportDatesCSV()">⬇️ Exporter (CSV)</button>
+        <div class="flex" style="gap:6px"><button class="btn primary" onclick="exportDatesXLSX()">⬇️ Excel</button><button class="btn" onclick="exportDatesCSV()">⬇️ CSV</button><button class="btn" onclick="exportDatesPDF()">🖨️ PDF</button></div>
       </div></div>
       <div class="kpis" id="dKpis"></div>
       <div class="card"><div class="card-h"><h3 id="dCount"></h3><span class="mini">clique une date pour la fiche complète (booking · line-up · admin · régie)</span></div>
@@ -1056,8 +1060,13 @@ async function renderTaches(){
 async function relanceFaiteTache(id){await sb.from('interactions').update({relance_faite:true}).eq('id',id);toast('✓ Fait');await reloadNegos();renderTaches();}
 
 /* ===== Historique des versions ===== */
-const APP_VERSION='2.2';
+const APP_VERSION='2.3';
 const CHANGELOG=[
+ ['2.3','4 septembre 2026','Exports des dates',[
+   'Onglet Dates : filtres artiste, booker, période du/au, France / étranger, région, et statut « Confirmées », « Options » ou les deux',
+   'Export Excel (feuille Dates avec filtres automatiques + feuille Récap), CSV et PDF (impression paysage)',
+   'Colonnes : date, heure, artiste(s), projet, structure, lieu, ville, département, région, pays, saison, statut, contrat, cession HT, taux et montant de commission, jauge max, contact programmation, email, téléphone, booker, notes',
+   'Line-up : catégorie modifiable (artiste ↔ technicien) dans chaque accordéon']],
  ['2.2','4 septembre 2026','Fiches projets & line-up',[
    'Line-up séparé en Artistes et Techniciens, présentés en accordéons compacts (nom — instrument · cachet brut)',
    'Artiste lead : champ oui / non, badge ★ LEAD et affichage en premier',
@@ -1626,14 +1635,24 @@ function fillDateFilters(){
   document.getElementById('dfSais').innerHTML='<option value="">Toutes</option>'+sais.map(s=>`<option>${s}</option>`).join('');
   const ans=[...new Set(DB.datesAll.map(d=>d.date_spectacle.slice(0,4)))].sort();
   document.getElementById('dfAn').innerHTML='<option value="">Toutes</option>'+ans.map(a=>`<option>${a}</option>`).join('');
-  const regs=[...new Set(DB.datesAll.map(d=>d.region).filter(Boolean))].sort();
+  const regs=[...new Set(DB.datesAll.map(d=>dateRegion(d)).filter(Boolean))].sort();
   document.getElementById('dfReg').innerHTML='<option value="">Toutes</option>'+regs.map(r=>`<option>${esc(r)}</option>`).join('');
+  const a0=document.getElementById('dfArt').value,b0=document.getElementById('dfBook').value;
+  document.getElementById('dfArt').innerHTML='<option value="">Tous</option>'+(DB.artistes||[]).map(a=>`<option value="${a.id}" ${a0==a.id?'selected':''}>${esc(a.nom)}</option>`).join('');
+  const bks=[...new Set(DB.datesAll.map(d=>d.booker).filter(Boolean))].sort();
+  document.getElementById('dfBook').innerHTML='<option value="">Tous</option>'+bks.map(b=>`<option ${b0===b?'selected':''}>${esc(b)}</option>`).join('');
 }
+function dateRegion(d){return d.region||(d.lieu_id?((DB.lieux||[]).find(l=>l.id===d.lieu_id)||{}).region||'':'');}
+function dateArtistes(d){return ((DB.projArt||{})[d.projet_id]||[]).map(x=>(DB.artistes||[]).find(a=>a.id===x.artiste_id)).filter(Boolean).map(a=>a.nom).join(', ');}
 function filteredDates(){
   const pj=+document.getElementById('dfProj').value||0, sa=document.getElementById('dfSais').value,
     an=document.getElementById('dfAn').value, st=document.getElementById('dfStat').value,
     py=document.getElementById('dfPays').value, rg=document.getElementById('dfReg').value;
-  return (DB.datesAll||[]).filter(d=>(!pj||d.projet_id===pj)&&(!sa||saisonOf(d.date_spectacle)===sa)&&(!an||d.date_spectacle.startsWith(an))&&(!st||d.statut===st)&&(!py||(d.pays||'France')===py)&&(!rg||d.region===rg));
+  const ar=+document.getElementById('dfArt').value||0, bk=document.getElementById('dfBook').value, from=document.getElementById('dfFrom').value, to=document.getElementById('dfTo').value;
+  const sts=st?st.split(','):null;
+  return (DB.datesAll||[]).filter(d=>(!pj||d.projet_id===pj)&&(!sa||saisonOf(d.date_spectacle)===sa)&&(!an||d.date_spectacle.startsWith(an))&&(!sts||sts.includes(d.statut))
+    &&(!py||(py==='etranger'?(d.pays||'France')!=='France':(d.pays||'France')===py))&&(!rg||dateRegion(d)===rg)
+    &&(!ar||((DB.projArt||{})[d.projet_id]||[]).some(x=>x.artiste_id===ar))&&(!bk||d.booker===bk)&&(!from||d.date_spectacle>=from)&&(!to||d.date_spectacle<=to)&&(true));
 }
 function lieuLabel(d){if(d.lieu_id){const l=DB.lieux.find(x=>x.id===d.lieu_id);if(l)return l.nom+(l.ville?' · '+l.ville:'');}return (d.lieu_texte||'—')+(d.ville_texte?' · '+d.ville_texte:'');}
 function renderDates(){
@@ -1661,18 +1680,49 @@ function renderDates(){
       <td class="mini">${lu.length?lu.length+' 🎺':'—'}</td></tr>`;
   }).join('');
 }
+const EXPORT_COLS=['Date','Heure','Artiste(s)','Projet','Structure porteuse','Lieu','Ville','Département','Région','Pays','Saison','Statut','Type de contrat','Prix de cession HT (€)','Taux commission (%)','Commission (€)','Jauge max','Contact programmation','Email contact','Téléphone','Booker','Notes'];
+function exportRows(){
+  return filteredDates().sort((a,b)=>a.date_spectacle.localeCompare(b.date_spectacle)).map(d=>{
+    const p=(DB.projList||[]).find(x=>x.id===d.projet_id);const l=d.lieu_id?DB.lieux.find(x=>x.id===d.lieu_id):null;const sp=DB.porteuses[d.structure_porteuse_id]||{};
+    const dl=p?DB.deals[p.id]:null;const taux=Math.round((dl?.taux_commission??0.12)*1000)/10;
+    const ct=l?((DB.contacts[l.id]||[]).find(c=>c.type==='programmation')||(DB.contacts[l.id]||[])[0]):null;
+    return [d.date_spectacle.split('-').reverse().join('/'),d.heure||'',dateArtistes(d),p?p.nom:'',sp.nom||'',l?l.nom:(d.lieu_texte||''),l?(l.ville||''):(d.ville_texte||''),l?(l.departement||''):'',dateRegion(d),d.pays||'France',saisonOf(d.date_spectacle),(STATUTS[d.statut]||[d.statut])[0],d.type_contrat||'',d.prix_cession??'',taux,commOf(d)||'',l?(lieuMaxJauge(l)||''):'',ct?[ct.prenom,ct.nom].filter(Boolean).join(' '):'',ct?(ct.email||''):(l?(l.email||''):''),ct?(ct.portable||ct.telephone||''):(l?(l.telephone||''):''),d.booker||'',(d.notes||'')];
+  });
+}
+function exportName(ext){const pj=document.getElementById('dfProj');const pname=pj.value?pj.options[pj.selectedIndex].text.replace(/[^\w-]+/g,'_'):'toutes';const st=document.getElementById('dfStat').value;return 'scenya_dates_'+pname+(st?'_'+(st.includes('option')&&st.includes('confirmee')?'confirmees_options':st.includes('option')?'options':'confirmees'):'')+'_'+new Date().toISOString().slice(0,10)+'.'+ext;}
+function loadScript(src){return new Promise((res,rej)=>{if(document.querySelector(`script[src="${src}"]`))return res();const s=document.createElement('script');s.src=src;s.onload=res;s.onerror=rej;document.head.appendChild(s);});}
+async function exportDatesXLSX(){
+  const rows=exportRows(); if(!rows.length){toast('Aucune date à exporter',true);return;}
+  try{await loadScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js');}catch(e){toast('Bibliothèque Excel indisponible — utilise le CSV',true);return;}
+  const data=[EXPORT_COLS].concat(rows.map(r=>r.map((v,i)=>[13,14,15,16].includes(i)&&v!==''?+v:v)));
+  const ws=XLSX.utils.aoa_to_sheet(data);
+  ws['!cols']=EXPORT_COLS.map((c,i)=>({wch:[10,6,22,20,28,28,16,10,18,10,9,12,12,14,10,12,9,22,26,14,10,30][i]||14}));
+  ws['!autofilter']={ref:XLSX.utils.encode_range({s:{c:0,r:0},e:{c:EXPORT_COLS.length-1,r:rows.length}})};
+  const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,ws,'Dates');
+  const cess=rows.reduce((s,r)=>s+(+r[13]||0),0),comm=rows.reduce((s,r)=>s+(+r[15]||0),0);
+  const byS={};rows.forEach(r=>{byS[r[11]]=(byS[r[11]]||0)+1;});
+  const rec=[['Export Scenya CRM',new Date().toLocaleString('fr-FR')],['Dates exportées',rows.length],['Total cession HT (€)',cess],['Total commission (€)',comm],[],['Statut','Nombre']].concat(Object.entries(byS));
+  XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(rec),'Récap');
+  XLSX.writeFile(wb,exportName('xlsx'));toast('⬇️ '+rows.length+' date(s) exportée(s) en Excel');
+}
+function exportDatesPDF(){
+  const rows=exportRows(); if(!rows.length){toast('Aucune date à exporter',true);return;}
+  const keep=[0,2,3,5,6,8,9,11,13,15,16,20];
+  const cess=rows.reduce((s,r)=>s+(+r[13]||0),0),comm=rows.reduce((s,r)=>s+(+r[15]||0),0);
+  const pj=document.getElementById('dfProj');const stSel=document.getElementById('dfStat');
+  const title='Dates — '+(pj.value?pj.options[pj.selectedIndex].text:'tous les projets')+(stSel.value?' — '+stSel.options[stSel.selectedIndex].text.replace(/^[^A-Za-zÀ-ÿ]+/,''):'');
+  const w=window.open('','_blank'); if(!w){toast('Autorise les fenêtres pop-up pour le PDF',true);return;}
+  w.document.write(`<html><head><meta charset="utf-8"><title>${esc(title)}</title><style>body{font-family:Arial,sans-serif;font-size:11px;margin:18px;color:#222}h1{font-size:17px;margin:0 0 4px}p.m{color:#666;margin:0 0 12px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #bbb;padding:4px 6px;text-align:left;vertical-align:top}th{background:#eee;font-size:10px;text-transform:uppercase}td.n{text-align:right;white-space:nowrap}@page{size:landscape;margin:12mm}</style></head><body>
+  <h1>Scenya CRM — ${esc(title)}</h1><p class="m">${rows.length} date(s) · cession HT ${cess.toLocaleString('fr-FR')} € · commission ${comm.toLocaleString('fr-FR')} € · édité le ${new Date().toLocaleDateString('fr-FR')}</p>
+  <table><thead><tr>${keep.map(i=>`<th>${esc(EXPORT_COLS[i])}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${keep.map(i=>`<td class="${[13,15,16].includes(i)?'n':''}">${esc(String(r[i]??''))}</td>`).join('')}</tr>`).join('')}</tbody></table>
+  <script>window.onload=()=>window.print();<\/script></body></html>`);
+  w.document.close();
+}
 function exportDatesCSV(){
-  const rows=filteredDates();
-  const head=['date','projet','lieu','ville','region','pays','saison','statut','type_contrat','prix_cession_ht','commission','booker'];
-  const lines=[head.join(';')].concat(rows.map(d=>{
-    const p=(DB.projList||[]).find(x=>x.id===d.projet_id);const l=d.lieu_id?DB.lieux.find(x=>x.id===d.lieu_id):null;
-    return [d.date_spectacle,p?p.nom:'',l?l.nom:(d.lieu_texte||''),l?l.ville:(d.ville_texte||''),d.region||'',d.pays||'France',saisonOf(d.date_spectacle),(STATUTS[d.statut]||[d.statut])[0],d.type_contrat||'',d.prix_cession||'',commOf(d)||'',d.booker||''].map(v=>('"'+String(v).replace(/"/g,'""')+'"')).join(';');
-  }));
-  const blob=new Blob(['﻿'+lines.join('\n')],{type:'text/csv;charset=utf-8'});
-  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
-  const pj=document.getElementById('dfProj');const pname=pj.value?pj.options[pj.selectedIndex].text.replace(/[^\w-]+/g,'_'):'toutes';
-  a.download='scenya_dates_'+pname+'_'+new Date().toISOString().slice(0,10)+'.csv';a.click();
-  toast('✓ Export CSV ('+rows.length+' dates) — prêt pour les dossiers de subvention');
+  const rows=exportRows(); if(!rows.length){toast('Aucune date à exporter',true);return;}
+  const lines=[EXPORT_COLS.join(';')].concat(rows.map(r=>r.map(v=>'"'+String(v??'').replace(/"/g,'""')+'"').join(';')));
+  const blob=new Blob(['\ufeff'+lines.join('\n')],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=exportName('csv');a.click();toast('⬇️ '+rows.length+' date(s) exportée(s) en CSV');
 }
 async function openDate(id,fromRoute){
   const d=(DB.datesAll||[]).find(x=>x.id===id); if(!d){toast('Date introuvable',true);return;}
@@ -1804,6 +1854,7 @@ function memberRow(m,id,all){
       <div><label class="fl">Téléphone</label><input class="f lt" value="${esc(m.telephone||'')}"></div>
       <div><label class="fl">Cachet brut (€)</label><input class="f lc" type="number" value="${m.cachet??''}" oninput="updTotal(${id})"></div>
       ${tech?'<input type="hidden" class="ll" value="false">':`<div><label class="fl">Artiste lead</label><select class="f ll"><option value="false" ${!m.lead?'selected':''}>Non</option><option value="true" ${m.lead?'selected':''}>Oui ★</option></select></div>`}
+      <div><label class="fl">Catégorie</label><select class="f lcat"><option value="artiste" ${!tech?'selected':''}>🎤 Artiste</option><option value="technicien" ${tech?'selected':''}>🔧 Technicien</option></select></div>
       <div><label class="fl">Remplaçant de</label><select class="f lr"><option value="">— titulaire —</option>${principals.map(x=>`<option value="${x.id}" ${m.remplacant_de===x.id?'selected':''}>${esc([x.prenom,x.nom].filter(Boolean).join(' '))}</option>`).join('')}</select></div>
       <div style="align-self:end"><button class="btn sm danger" onclick="delMusicien(${m.id},${id},this)">✕ Retirer</button></div>
     </div></div></details>`;
@@ -1915,7 +1966,7 @@ async function saveProjet(id){
     await sb.from('lineup').update({prenom:div.querySelector('.lp').value.trim()||null,nom:div.querySelector('.ln2').value.trim()||'—',
       instrument:div.querySelector('.li').value.trim()||null,cachet:+div.querySelector('.lc').value||null,
       email:div.querySelector('.le').value.trim()||null,telephone:div.querySelector('.lt').value.trim()||null,
-      lead:div.querySelector('.ll').value==='true',remplacant_de:+div.querySelector('.lr').value||null}).eq('id',+div.dataset.lid);
+      lead:div.querySelector('.ll').value==='true',categorie:div.querySelector('.lcat').value,remplacant_de:+div.querySelector('.lr').value||null}).eq('id',+div.dataset.lid);
   }
   for(const div of document.querySelectorAll('#pInterv [data-iid]')){
     await sb.from('projet_intervenants').update({role_id:+div.querySelector('.ir').value,prenom:div.querySelector('.ip').value.trim()||null,
