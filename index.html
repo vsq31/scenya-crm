@@ -17,7 +17,7 @@
   .logo{width:32px;height:32px;border-radius:9px;background:linear-gradient(135deg,var(--primary),var(--cyan));display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px}
   .topbar h1{font-size:16px;font-weight:700}.topbar .sub{font-size:11px;color:var(--muted)}
   .tabs{display:flex;gap:6px;margin-left:20px}
-  .tab{padding:7px 14px;border-radius:9px;cursor:pointer;color:var(--muted);font-weight:600;font-size:13px}
+  .tab{padding:7px 14px;border-radius:9px;cursor:pointer;color:var(--muted);font-weight:600;font-size:13px;display:inline-block}
   .tab:hover{background:var(--surface)}.tab.on{background:rgba(124,92,255,.2);color:#fff}
   .btn{background:var(--surface-2);border:1px solid var(--line);color:var(--text);padding:8px 13px;border-radius:9px;font-weight:600;cursor:pointer;font-size:13px}
   .btn:hover{border-color:var(--primary)}
@@ -33,6 +33,8 @@
   th{text-align:left;font-size:10.5px;text-transform:uppercase;color:var(--muted);padding:8px 10px;border-bottom:1px solid var(--line);font-weight:700;position:sticky;top:0;background:var(--surface);z-index:1}
   td{padding:9px 10px;border-bottom:1px solid rgba(46,49,87,.5);font-size:12.5px}
   tr.clik{cursor:pointer}tr.clik:hover td{background:rgba(124,92,255,.07)}
+  a.lnk{color:inherit;text-decoration:none}a.lnk:hover{text-decoration:underline;text-underline-offset:2px}
+  a.ps-item{text-decoration:none}
   .row-strong{font-weight:700}.mini{font-size:11px;color:var(--muted)}
   .pill{display:inline-flex;align-items:center;gap:5px;padding:2px 8px;border-radius:20px;font-size:10.5px;font-weight:700}
   .pill.g{background:rgba(62,207,142,.15);color:var(--green)}.pill.b{background:rgba(124,92,255,.18);color:var(--primary-2)}
@@ -144,16 +146,16 @@
 <div id="appView" style="display:none">
   <div class="topbar">
     <div class="logo">S</div>
-    <div><h1>Scenya CRM</h1><div class="sub"><span onclick="openChangelog()" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px" title="Historique des versions">v1.9</span> · agence de booking</div></div>
+    <div><h1>Scenya CRM</h1><div class="sub"><span onclick="openChangelog()" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px" title="Historique des versions">v2.0</span> · agence de booking</div></div>
     <div class="tabs">
-      <div class="tab on" data-v="annuaire" onclick="switchTab('annuaire')">🏛️ Annuaire</div>
-      <div class="tab" data-v="pilotage" onclick="switchTab('pilotage')">📊 Pilotage</div>
-      <div class="tab" data-v="projets" onclick="switchTab('projets')">🎷 Projets</div>
-      <div class="tab" data-v="dates" onclick="switchTab('dates')">📅 Dates</div>
-      <div class="tab" data-v="billet" onclick="switchTab('billet')">🎟️ Billetterie</div>
-      <div class="tab" data-v="renta" onclick="switchTab('renta')">📈 Rentabilité</div>
-      <div class="tab" data-v="medias" onclick="switchTab('medias')">📻 Médias</div>
-      <div class="tab" data-v="rappro" onclick="switchTab('rappro')">🔗 Rapprochement dates</div>
+      <a class="tab on" data-v="annuaire" href="#/annuaire" style="text-decoration:none">🏛️ Annuaire</a>
+      <a class="tab" data-v="pilotage" href="#/pilotage" style="text-decoration:none">📊 Pilotage</a>
+      <a class="tab" data-v="projets" href="#/projets" style="text-decoration:none">🎷 Projets</a>
+      <a class="tab" data-v="dates" href="#/dates" style="text-decoration:none">📅 Dates</a>
+      <a class="tab" data-v="billet" href="#/billet" style="text-decoration:none">🎟️ Billetterie</a>
+      <a class="tab" data-v="renta" href="#/renta" style="text-decoration:none">📈 Rentabilité</a>
+      <a class="tab" data-v="medias" href="#/medias" style="text-decoration:none">📻 Médias</a>
+      <a class="tab" data-v="rappro" href="#/rappro" style="text-decoration:none">🔗 Rapprochement dates</a>
     </div>
     <div style="flex:1"></div>
     <span class="mini" id="presence" title="Utilisateurs connectés"></span>
@@ -334,6 +336,7 @@ async function init(){
   }
   const le=document.getElementById('loadErr');
   if(le)le.style.display=ok?'none':'block';
+  window.APP_READY=true; await routeFromHash();
   initPresence();
   await loadNotifs();
   setInterval(loadNotifs,60000);
@@ -478,13 +481,14 @@ function renderList(){
   const showDist=!!(dref&&(dkm||advOn));
   if(showDist)rows.sort((a,b)=>(distKm(a,dref)??1e9)-(distKm(b,dref)??1e9));
   window.LISTIDS=rows.map(l=>l.id);
+  if(window.APP_READY)syncHashFromFilters();
   const MAXR=300;
   document.getElementById('listCount').textContent=rows.length+' lieu(x)'+(advOn?' — recherche avancée active':(filtDiff.size||filtProg.size?' — recherche croisée active':''))+(showDist?' — triés par distance depuis '+dref.label:'')+(rows.length>MAXR?' — affichage des '+MAXR+' premiers, affinez les filtres':'');
   document.getElementById('listBody').innerHTML=rows.slice(0,MAXR).map(l=>{
     const sp=DB.porteuses[l.structure_porteuse_id]||{};
     const js=DB.jauges[l.id]||[];
     return `<tr class="clik" onclick="openLieu(${l.id})">
-      <td class="row-strong">${compDot(l)}${esc(l.nom)}${l.source?' <span class="mini" title="'+esc(l.source)+'">📥</span>':''}</td>
+      <td class="row-strong">${compDot(l)}<a class="lnk" href="#/lieu/${l.id}" onclick="event.stopPropagation()">${esc(l.nom)}</a>${l.source?' <span class="mini" title="'+esc(l.source)+'">📥</span>':''}</td>
       <td class="mini">${esc(typeNames(l).join(' · ')||'—')}</td>
       <td>${esthNames(l.esthetiques).map(n=>`<span class="pill c">${esc(n)}</span>`).join(' ')||'<span class="mini">Non renseigné</span>'}</td>
       <td>${esc(l.ville||'—')} <span class="mini">(${esc(l.departement||'—')})</span>${showDist&&distKm(l,dref)!==null?` <span class="pill c">${Math.round(distKm(l,dref))} km</span>`:''}</td>
@@ -496,8 +500,9 @@ function renderList(){
 }
 
 /* ---------- FICHE LIEU + STRUCTURE ---------- */
-async function openLieu(id){
-  const l=DB.lieux.find(x=>x.id===id); if(!l)return;
+async function openLieu(id,fromRoute){
+  const l=DB.lieux.find(x=>x.id===id); if(!l){toast('Fiche introuvable',true);return;}
+  if(!fromRoute)setHash('/lieu/'+id);
   const notesL=await fetchNotes('structure',id);
   const inter=await fetchInteractions(l.structure_porteuse_id); window.INTER_CACHE=inter;
   const cp=completude(l);
@@ -712,7 +717,7 @@ function renderProjSide(){
   el.innerHTML=`<div class="ps-item" onclick="toggleSide()" title="Replier / déplier">${collapsed?'»':'«'} <span class="ps-label">Replier</span></div>
     <div class="ps-title">🎷 Projets actifs</div>
     ${collapsed?'':`<select class="f ps-label" style="width:100%;margin:0 0 6px;padding:5px 8px;font-size:12px" onchange="window.SIDE_ESTH=this.value;renderProjSide()"><option value="">Toutes esthétiques</option>${(DB.esths||[]).filter(e=>e.nom!=='Toutes esthétiques').map(e=>`<option value="${e.id}" ${fe==e.id?'selected':''}>${esc(e.nom)}</option>`).join('')}</select>`}
-    ${projs.map((p,i)=>`<div class="ps-item" onclick="openProjet(${p.id})" title="${esc(p.nom)}"><span class="ps-dot" style="background:${projColors(i)}"></span><span class="ps-label">${esc(p.nom)}</span></div>`).join('')}`;
+    ${projs.map((p,i)=>`<a class="ps-item" href="#/projet/${p.id}" title="${esc(p.nom)}"><span class="ps-dot" style="background:${projColors(i)}"></span><span class="ps-label">${esc(p.nom)}</span></a>`).join('')}`;
   document.body.classList.toggle('sideOpen',!collapsed);
   document.body.classList.toggle('sideCollapsed',collapsed);
 }
@@ -764,13 +769,14 @@ function renderMedias(){
   const rows=filteredMedias(), MAXR=300;
   document.getElementById('mdCount').textContent=rows.length+' média(s)'+(rows.length>MAXR?' — affichage des '+MAXR+' premiers':'');
   document.getElementById('mdBody').innerHTML=rows.slice(0,MAXR).map(m=>`<tr class="clik" onclick="openMedia(${m.id})">
-    <td class="row-strong">${esc(m.nom)}</td><td><span class="pill ${m.categorie==='radio'?'c':'b'}">${m.categorie==='radio'?'📻 Radio':'📰 Presse'}</span></td>
+    <td class="row-strong"><a class="lnk" href="#/media/${m.id}" onclick="event.stopPropagation()">${esc(m.nom)}</a></td><td><span class="pill ${m.categorie==='radio'?'c':'b'}">${m.categorie==='radio'?'📻 Radio':'📰 Presse'}</span></td>
     <td>${esc(m.ville||'—')} <span class="mini">${esc(m.region||m.pays||'')}</span></td>
     <td class="mini">${m.email?`<a href="mailto:${esc(m.email)}">${esc(m.email)}</a>`:'—'}</td><td class="mini">${esc(m.telephone||'—')}</td>
     <td class="mini">${esc([m.langue,m.frequence].filter(Boolean).join(' · ')||'—')}</td></tr>`).join('');
 }
-async function openMedia(id){
-  const m=(DB.medias||[]).find(x=>x.id===id); if(!m)return;
+async function openMedia(id,fromRoute){
+  const m=(DB.medias||[]).find(x=>x.id===id); if(!m){toast('Média introuvable',true);return;}
+  if(!fromRoute)setHash('/media/'+id);
   const notesM=await fetchNotes('media',id);
   const row=(k,v,link)=>v?`<div><label class="fl">${k}</label><div style="font-size:13px">${link?`<a href="${esc(link)}" target="_blank">${esc(v)}</a>`:esc(v)}</div></div>`:'';
   document.getElementById('modal').innerHTML=`
@@ -1010,7 +1016,7 @@ function projNegoHtml(projetId){
   if(!list.length)return '<span class="mini">Aucune négociation — les échanges saisis dans les fiches clients apparaîtront ici.</span>';
   return `<div class="tbl-wrap"><table><thead><tr><th>Structure</th><th>Statut</th><th>Montant</th><th>Dernier contact</th><th>Relance</th><th>Booker</th></tr></thead><tbody>
   ${list.map(n=>{const sp=DB.porteuses[n.structure_porteuse_id]||{};const lid=n.lieu_id||DB.lieuBySp[n.structure_porteuse_id];
-    return `<tr class="clik" onclick="closeModal();openLieu(${lid})"><td class="row-strong">${esc(sp.nom||'—')} <span class="mini">${esc(sp.ville||'')}</span></td><td>${negoPill(n.statut)}</td><td class="mini">${n.montant_propose?(+n.montant_propose).toLocaleString('fr-FR')+' €':'—'}</td><td class="mini">${fmtD(n.derniere_interaction)}</td><td class="mini">${n.prochaine_relance?fmtD(n.prochaine_relance)+' · '+esc(n.relance_assignee||''):'—'}</td><td class="mini">${esc(n.booker||'—')}</td></tr>`;}).join('')}
+    return `<tr class="clik" onclick="openLieu(${lid})"><td class="row-strong"><a class="lnk" href="#/lieu/${lid}" onclick="event.stopPropagation()">${esc(sp.nom||'—')}</a> <span class="mini">${esc(sp.ville||'')}</span></td><td>${negoPill(n.statut)}</td><td class="mini">${n.montant_propose?(+n.montant_propose).toLocaleString('fr-FR')+' €':'—'}</td><td class="mini">${fmtD(n.derniere_interaction)}</td><td class="mini">${n.prochaine_relance?fmtD(n.prochaine_relance)+' · '+esc(n.relance_assignee||''):'—'}</td><td class="mini">${esc(n.booker||'—')}</td></tr>`;}).join('')}
   </tbody></table></div>`;
 }
 /* Tâches personnelles (Pilotage) */
@@ -1026,14 +1032,19 @@ async function renderTaches(){
   el.innerHTML=`<div class="flex between center wrap-f" style="margin-bottom:8px"><b>✅ Mes tâches — qui dois-je appeler ? <span class="mini">(${list.length})</span></b>${sel}</div>
   ${groups.map(([lab,arr])=>arr.length?`<div class="mini" style="font-weight:800;margin:8px 0 4px">${lab} (${arr.length})</div>`+arr.map(i=>{const sp=DB.porteuses[i.structure_porteuse_id]||{};const p=(DB.projList||[]).find(x=>x.id===i.projet_id);const lid=DB.lieuBySp[i.structure_porteuse_id];
     return `<div class="flex between center wrap-f" style="gap:8px;padding:6px 0;border-bottom:1px solid var(--line)">
-      <div><b>${fmtD(i.relance_date)}</b> · <a href="#" onclick="event.preventDefault();openLieu(${lid})" style="font-weight:700">${esc(sp.nom||'—')}</a> ${p?'<span class="pill c">'+esc(p.nom)+'</span>':''} <span class="mini">${esc(i.commentaire||'')}</span> ${i.montant?'<span class="mini">· '+(+i.montant).toLocaleString('fr-FR')+' €</span>':''} ${!who?'<span class="mini">· '+esc(i.relance_assignee||'')+'</span>':''}</div>
+      <div><b>${fmtD(i.relance_date)}</b> · <a class="lnk" href="#/lieu/${lid}" style="font-weight:700">${esc(sp.nom||'—')}</a> ${p?'<span class="pill c">'+esc(p.nom)+'</span>':''} <span class="mini">${esc(i.commentaire||'')}</span> ${i.montant?'<span class="mini">· '+(+i.montant).toLocaleString('fr-FR')+' €</span>':''} ${!who?'<span class="mini">· '+esc(i.relance_assignee||'')+'</span>':''}</div>
       <button class="btn sm" onclick="relanceFaiteTache(${i.id})">✓ Fait</button></div>`;}).join(''):'').join('')||'<span class="mini">Aucune relance en attente 🎉 — les relances saisies dans l\'historique des échanges apparaissent ici.</span>'}`;
 }
 async function relanceFaiteTache(id){await sb.from('interactions').update({relance_faite:true}).eq('id',id);toast('✓ Fait');await reloadNegos();renderTaches();}
 
 /* ===== Historique des versions ===== */
-const APP_VERSION='1.9';
+const APP_VERSION='2.0';
 const CHANGELOG=[
+ ['2.0','4 septembre 2026','Navigation multi-onglets',[
+   'Chaque fiche (structure, projet, date, média) et chaque onglet a sa propre adresse : clic droit → « Ouvrir dans un nouvel onglet », Cmd/Ctrl + clic',
+   'La recherche en cours (filtres, périodes, distance, recherche avancée) est conservée dans l\'adresse : rechargement, partage, retour arrière',
+   'Le bouton Précédent du navigateur ferme la fiche et revient à la liste',
+   'Liens réels dans les résultats, la colonne projets, les dates, les tâches et les négociations']],
  ['1.9','4 septembre 2026','Recherche géographique & avancée',[
    'Toutes les adresses géolocalisées (Base Adresse Nationale) : recherche « à moins de X km » d\'une ville, d\'un lieu du CRM ou d\'une date confirmée, résultats triés par distance',
    'Recherche avancée par groupes : critères cumulés (ET) dans un groupe, groupes alternatifs (OU) — sans priorité d\'opérateurs',
@@ -1166,7 +1177,7 @@ document.addEventListener('click',e=>{
   let n=t.nextElementSibling;
   while(n&&!n.classList.contains('sec-t')){n.style.display=fold?'none':'';n=n.nextElementSibling;}
 });
-function closeModal(){document.getElementById('overlay').classList.remove('open');}
+function closeModal(fromRoute){document.getElementById('overlay').classList.remove('open');if(!fromRoute&&/^#\/(lieu|projet|date|media)\//.test(location.hash))setHash('/'+window.CURRENT_TAB+(window.CURRENT_TAB==='annuaire'?buildQS():''),true);}
 function getMonths(el){return [...document.querySelectorAll('#'+el+' .chip.on')].map(c=>+c.dataset.m);}
 async function saveLieu(id){
   const l=DB.lieux.find(x=>x.id===id);
@@ -1249,7 +1260,45 @@ async function lierDate(dateId){
   toast('✓ Date rattachée à '+l.nom); await loadAll(); switchTab('rappro');
 }
 
-function switchTab(v){
+/* ===== LOT H : ROUTAGE PAR URL (multi-onglets, liens réels, recherche conservée) ===== */
+const TABS=['annuaire','pilotage','projets','dates','billet','renta','medias','rappro'];
+window.CURRENT_TAB='annuaire'; window.ROUTING=false;
+function setHash(path,replace){const h='#'+path;if(location.hash===h)return;window.ROUTING=true;if(replace)history.replaceState(null,'',h);else history.pushState(null,'',h);setTimeout(()=>window.ROUTING=false,0);}
+function buildQS(){
+  const g=x=>document.getElementById(x)?.value||'';const p=new URLSearchParams();
+  const put=(k,v)=>{if(v)p.set(k,v);};
+  put('q',g('fTxt'));put('type',g('fType'));put('esth',g('fEsth'));put('reg',g('fReg'));put('jmin',g('fJmin'));put('jmax',g('fJmax'));put('qualif',g('fQualif'));put('src',g('fSrc'));put('comp',g('fComp'));
+  if(filtDiff.size)p.set('diff',[...filtDiff].join(','));if(filtProg.size)p.set('prog',[...filtProg].join(','));
+  if(g('fDistKm')&&g('fDistVille'))p.set('dist',g('fDistKm')+'@'+g('fDistVille'));
+  if(ADV.groups.some(x=>x.crits.length))p.set('adv',JSON.stringify(ADV.groups.map(x=>({crits:x.crits.map(c=>({f:c.f,op:c.op,v:c.v,km:c.km,txt:c.txt}))}))));
+  const s=p.toString();return s?'?'+s:'';
+}
+async function applyQS(qs){
+  const p=new URLSearchParams(qs||'');const set=(id,v)=>{const el=document.getElementById(id);if(el&&v!=null)el.value=v;};
+  set('fTxt',p.get('q')||'');set('fType',p.get('type')||'');set('fEsth',p.get('esth')||'');set('fReg',p.get('reg')||'');set('fJmin',p.get('jmin')||'');set('fJmax',p.get('jmax')||'');set('fQualif',p.get('qualif')||'');set('fSrc',p.get('src')||'');set('fComp',p.get('comp')||'');
+  filtDiff=new Set((p.get('diff')||'').split(',').filter(Boolean).map(Number));filtProg=new Set((p.get('prog')||'').split(',').filter(Boolean).map(Number));
+  document.querySelectorAll('#fDiff .chip').forEach(c=>c.classList.toggle('on',filtDiff.has(+c.dataset.m)));document.querySelectorAll('#fProg .chip').forEach(c=>c.classList.toggle('on',filtProg.has(+c.dataset.m)));
+  const dist=p.get('dist');if(dist){const [km,ville]=dist.split('@');set('fDistKm',km);set('fDistVille',ville);window.DIST_REF=await geocodeVille(ville);}else{set('fDistKm','');set('fDistVille','');window.DIST_REF=null;}
+  const adv=p.get('adv');const panel=document.getElementById('advPanel');
+  if(adv){try{ADV.groups=JSON.parse(adv);}catch(e){ADV.groups=[{crits:[]}];}
+    for(const g of ADV.groups)for(const c of g.crits)if(c.f==='distance'&&c.txt){c.ref=await geocodeVille(c.txt);if(c.ref)window.DIST_REF=c.ref;}
+    panel.style.display='block';document.getElementById('advBtn').classList.add('primary');renderAdv();}
+  else{ADV.groups=[{crits:[]}];panel.style.display='none';document.getElementById('advBtn').classList.remove('primary');}
+}
+function syncHashFromFilters(){if(window.CURRENT_TAB==='annuaire'&&!document.getElementById('overlay').classList.contains('open'))setHash('/annuaire'+buildQS(),true);}
+async function routeFromHash(){
+  const raw=(location.hash||'#/annuaire').slice(1);const [path,qs]=raw.split('?');const parts=path.split('/').filter(Boolean);const k=parts[0]||'annuaire';const id=+parts[1];
+  if(TABS.includes(k)){closeModal(true);switchTab(k,true);if(k==='annuaire'){await applyQS(qs);renderList();}return;}
+  if(k==='lieu'&&id){switchTab('annuaire',true);openLieu(id,true);return;}
+  if(k==='projet'&&id){switchTab('projets',true);openProjet(id,true);return;}
+  if(k==='date'&&id){switchTab('dates',true);openDate(id,true);return;}
+  if(k==='media'&&id){switchTab('medias',true);if(!DB.medias)await loadMedias();openMedia(id,true);return;}
+  switchTab('annuaire',true);
+}
+window.addEventListener('hashchange',()=>{if(!window.ROUTING&&window.APP_READY)routeFromHash();});
+function switchTab(v,fromRoute){
+  window.CURRENT_TAB=v;
+  if(!fromRoute)setHash('/'+v+(v==='annuaire'?buildQS():''));
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.dataset.v===v));
   ['annuaire','pilotage','projets','dates','billet','renta','medias','rappro'].forEach(x=>{const el=document.getElementById('v-'+x);if(el)el.style.display=x===v?'block':'none';});
   if(v==='medias'&&!DB.medias)loadMedias();
@@ -1539,7 +1588,7 @@ function renderDates(){
     const p=(DB.projList||[]).find(x=>x.id===d.projet_id);const st=STATUTS[d.statut]||[d.statut,'m'];
     const lu=DB.dateLineup[d.id]||[];
     return `<tr class="clik" onclick="openDate(${d.id})">
-      <td class="row-strong" style="white-space:nowrap">${d.date_spectacle}</td>
+      <td class="row-strong" style="white-space:nowrap"><a class="lnk" href="#/date/${d.id}" onclick="event.stopPropagation()">${d.date_spectacle}</a></td>
       <td>${esc(p?p.nom:'—')}</td><td class="mini">${esc(lieuLabel(d))}</td>
       <td><span class="pill m">${saisonOf(d.date_spectacle)}</span></td>
       <td><span class="pill ${st[1]}">${st[0]}</span></td>
@@ -1562,8 +1611,9 @@ function exportDatesCSV(){
   a.download='scenya_dates_'+pname+'_'+new Date().toISOString().slice(0,10)+'.csv';a.click();
   toast('✓ Export CSV ('+rows.length+' dates) — prêt pour les dossiers de subvention');
 }
-function openDate(id){
-  const d=(DB.datesAll||[]).find(x=>x.id===id); if(!d)return;
+function openDate(id,fromRoute){
+  const d=(DB.datesAll||[]).find(x=>x.id===id); if(!d){toast('Date introuvable',true);return;}
+  if(!fromRoute)setHash('/date/'+id);
   const p=(DB.projList||[]).find(x=>x.id===d.projet_id);const lu=DB.dateLineup[id]||[];
   const dl=p?DB.deals[p.id]:null;const taux=Math.round((dl?.taux_commission??0.12)*100);
   const ia=d.infos_admin||{};const ir=d.infos_regie||{};
@@ -1679,7 +1729,7 @@ function renderProjets(){
   document.getElementById('projBody').innerHTML=(DB.projList||[]).map(p=>{
     const d=DB.deals[p.id]||{};const lu=DB.lineup[p.id]||[];const e=(DB.esthsAll||DB.esths).find(x=>x.id===p.esthetique_id);
     return `<tr class="clik" onclick="openProjet(${p.id})">
-      <td class="row-strong">${esc(p.nom)}</td>
+      <td class="row-strong"><a class="lnk" href="#/projet/${p.id}" onclick="event.stopPropagation()">${esc(p.nom)}</a></td>
       <td class="mini">${artNames(p.id)||'—'}</td>
       <td>${e?`<span class="pill c">${esc(e.nom)}</span>`:'<span class="mini">à renseigner</span>'}</td>
       <td><span class="pill b">${Math.round((d.taux_commission??0.12)*100)} %</span></td>
@@ -1688,8 +1738,9 @@ function renderProjets(){
       <td>${(p.interets_strategiques||[]).map(i=>`<span class="pill m">${esc(i)}</span>`).join(' ')||'<span class="mini">—</span>'}</td></tr>`;
   }).join('');
 }
-async function openProjet(id){
-  const p=(DB.projList||[]).find(x=>x.id===id); if(!p)return;
+async function openProjet(id,fromRoute){
+  const p=(DB.projList||[]).find(x=>x.id===id); if(!p){toast('Projet introuvable',true);return;}
+  if(!fromRoute)setHash('/projet/'+id);
   const notesP=await fetchNotes('projet',id);
   const d=DB.deals[id]||{};const lu=DB.lineup[id]||[];const iv=DB.interv[id]||[];const dc=DB.docs[id]||[];
   document.getElementById('modal').innerHTML=`
