@@ -33,6 +33,13 @@
   th{text-align:left;font-size:10.5px;text-transform:uppercase;color:var(--muted);padding:8px 10px;border-bottom:1px solid var(--line);font-weight:700;position:sticky;top:0;background:var(--surface);z-index:1}
   td{padding:9px 10px;border-bottom:1px solid rgba(46,49,87,.5);font-size:12.5px}
   tr.clik{cursor:pointer}tr.clik:hover td{background:rgba(124,92,255,.07)}
+  details.acc{border:1px solid var(--line);border-radius:9px;margin-bottom:6px;background:var(--surface)}
+  details.acc>summary{cursor:pointer;padding:8px 11px;font-size:13px;font-weight:600;list-style:none;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  details.acc>summary::before{content:'▸';font-size:10px;opacity:.6}details.acc[open]>summary::before{content:'▾'}
+  details.acc>.acc-b{padding:4px 11px 11px;border-top:1px solid var(--line)}
+  details.acc.lead{border-color:var(--amber);background:rgba(255,180,84,.06)}
+  .badge-lead{background:var(--amber);color:#fff;border-radius:6px;padding:1px 7px;font-size:10px;font-weight:800;letter-spacing:.5px}
+  details.acc.rempl{margin-left:22px;opacity:.9}
   a.lnk{color:inherit;text-decoration:none}a.lnk:hover{text-decoration:underline;text-underline-offset:2px}
   a.ps-item{text-decoration:none}
   .row-strong{font-weight:700}.mini{font-size:11px;color:var(--muted)}
@@ -146,7 +153,7 @@
 <div id="appView" style="display:none">
   <div class="topbar">
     <div class="logo">S</div>
-    <div><h1>Scenya CRM</h1><div class="sub"><span onclick="openChangelog()" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px" title="Historique des versions">v2.1</span> · agence de booking</div></div>
+    <div><h1>Scenya CRM</h1><div class="sub"><span onclick="openChangelog()" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px" title="Historique des versions">v2.2</span> · agence de booking</div></div>
     <div class="tabs">
       <a class="tab on" data-v="annuaire" href="#/annuaire" style="text-decoration:none">🏛️ Annuaire</a>
       <a class="tab" data-v="pilotage" href="#/pilotage" style="text-decoration:none">📊 Pilotage</a>
@@ -205,7 +212,7 @@
       <div class="card"><div class="flex between center wrap-f" style="margin-bottom:4px"><b>🎷 Projets & deals</b><button class="btn sm primary" onclick="openNewProjet()">＋ Projet</button></div>
         <p class="mini" style="margin-top:6px">Fiche centrale de chaque projet : deal (taux de commission propre, défaut 12 %), line-up officiel avec cachet réel par musicien, intervenants avec rôles libres, intérêt stratégique.</p></div>
       <div class="card"><div class="scroll-y"><table>
-        <thead><tr><th>Projet</th><th>Artiste(s)</th><th>Esthétique</th><th>Taux comm.</th><th>Line-up</th><th>Total cachets</th><th>Intérêts stratégiques</th></tr></thead>
+        <thead><tr><th>Projet</th><th>Artiste(s)</th><th>Esthétique</th><th>Taux comm.</th><th>Line-up</th><th>Total cachets bruts</th><th>Intérêts stratégiques</th></tr></thead>
         <tbody id="projBody"></tbody>
       </table></div></div>
     </div>
@@ -559,6 +566,7 @@ async function openLieu(id,fromRoute){
       <input class="f cn" value="${esc(c.nom||'')}" placeholder="Nom" style="width:125px">
       <input class="f ce" value="${esc(c.email||'')}" placeholder="Email" style="flex:1">
       <input class="f cte" value="${esc(c.portable||c.telephone||'')}" placeholder="Tél" style="width:120px">
+      ${c.email?`<a href="mailto:${esc(c.email)}" title="Écrire">✉️</a>`:''}${(c.portable||c.telephone)?`<a href="tel:${esc((c.portable||c.telephone).replace(/\s/g,''))}" title="Appeler">📞</a>`:''}
       <button class="btn sm danger" onclick="delContact(${c.id},this)">✕</button></div>`).join('')}</div>
     <button class="btn sm" onclick="addContact(${l.id},${l.structure_porteuse_id||'null'})">＋ Ajouter un contact</button>
     <div class="sec-t">📌 Note générale <span class="mini" style="text-transform:none;letter-spacing:0">(information permanente sur ce client — distincte de l'historique des échanges)</span></div>
@@ -1048,8 +1056,15 @@ async function renderTaches(){
 async function relanceFaiteTache(id){await sb.from('interactions').update({relance_faite:true}).eq('id',id);toast('✓ Fait');await reloadNegos();renderTaches();}
 
 /* ===== Historique des versions ===== */
-const APP_VERSION='2.1';
+const APP_VERSION='2.2';
 const CHANGELOG=[
+ ['2.2','4 septembre 2026','Fiches projets & line-up',[
+   'Line-up séparé en Artistes et Techniciens, présentés en accordéons compacts (nom — instrument · cachet brut)',
+   'Artiste lead : champ oui / non, badge ★ LEAD et affichage en premier',
+   'Remplaçants rattachés à leur titulaire (non comptés dans le total des cachets)',
+   'Email et téléphone de chaque musicien, technicien et contact cliquables (✉️ 📞)',
+   'Mention « cachet brut » partout (fiches, dates, PDF)',
+   'Champ « Commentaire / stratégie » sous l\'objectif de commission, repris dans le PDF']],
  ['2.1','4 septembre 2026','Fiabilité',[
    'Alerte « modifications non enregistrées » (Enregistrer / Quitter sans enregistrer / Annuler) à la fermeture d\'une fiche, au changement de fiche ou d\'onglet, à la fermeture du navigateur',
    'Après Enregistrer, la fiche reste ouverte : confirmation discrète « Modifications enregistrées »',
@@ -1457,7 +1472,7 @@ async function addPointage(dateId){
 async function delPointage(id,dateId){await sb.from('pointages').delete().eq('id',id);await loadBillet();renderBillet();openBillet(dateId);}
 
 /* ========== LOT 7 : EXPORT PDF PERSONNALISABLE ========== */
-const PDF_SECTIONS=[['infos','Infos projet & pitch'],['deal','Deal & objectifs'],['lineup','Line-up & cachets'],['stats','Statistiques (dates, CA, moyennes)'],['saisons','Évolution par saison'],['listedates','Liste détaillée des dates'],['strat','Intérêt stratégique']];
+const PDF_SECTIONS=[['infos','Infos projet & pitch'],['deal','Deal & objectifs'],['lineup','Line-up & cachets bruts'],['stats','Statistiques (dates, CA, moyennes)'],['saisons','Évolution par saison'],['listedates','Liste détaillée des dates'],['strat','Intérêt stratégique']];
 function exportPdfProjet(pid){
   const p=(DB.projList||[]).find(x=>x.id===pid); if(!p)return;
   document.getElementById('modal').innerHTML=`
@@ -1477,8 +1492,8 @@ function genPdfProjet(pid){
   const bySais={};ds.forEach(x=>{const s=saisonOf(x.date_spectacle);bySais[s]=(bySais[s]||0)+1;});
   let body='';
   if(secs.includes('infos'))body+=`<h2>${esc(p.nom)}</h2><p><b>Artiste(s) :</b> ${artNames(pid).replace(/⭐ /g,'★ ')||'—'}</p>${p.pitch?`<p>${esc(p.pitch)}</p>`:''}`;
-  if(secs.includes('deal'))body+=`<h3>Deal</h3><p>Taux de commission : <b>${Math.round((d.taux_commission??0.12)*100)} %</b>${d.partage_resultat?' · Partage de résultat : '+Math.round(d.partage_resultat*100)+' %':''}${d.objectif_dates?' · Objectif : '+d.objectif_dates+' dates/an':''}${d.objectif_commission?' · Objectif commission : '+(+d.objectif_commission).toLocaleString('fr-FR')+' €':''}</p>`;
-  if(secs.includes('lineup')&&lu.length)body+=`<h3>Line-up officiel</h3><table border="1" cellpadding="6" style="border-collapse:collapse"><tr><th>Musicien</th><th>Instrument</th><th>Cachet</th></tr>${lu.map(m=>`<tr><td>${esc((m.prenom||'')+' '+m.nom)}</td><td>${esc(m.instrument||'')}</td><td>${m.cachet?(+m.cachet).toLocaleString('fr-FR')+' €':'—'}</td></tr>`).join('')}<tr><td colspan="2"><b>Total</b></td><td><b>${lu.reduce((s,m)=>s+(+m.cachet||0),0).toLocaleString('fr-FR')} €</b></td></tr></table>`;
+  if(secs.includes('deal'))body+=`<h3>Deal</h3><p>Taux de commission : <b>${Math.round((d.taux_commission??0.12)*100)} %</b>${d.partage_resultat?' · Partage de résultat : '+Math.round(d.partage_resultat*100)+' %':''}${d.objectif_dates?' · Objectif : '+d.objectif_dates+' dates/an':''}${d.objectif_commission?' · Objectif commission : '+(+d.objectif_commission).toLocaleString('fr-FR')+' €':''}</p>${d.commentaire_objectif?'<p><i>'+esc(d.commentaire_objectif)+'</i></p>':''}`;
+  if(secs.includes('lineup')&&lu.length)body+=`<h3>Line-up officiel</h3><table border="1" cellpadding="6" style="border-collapse:collapse"><tr><th>Musicien</th><th>Instrument</th><th>Cachet brut</th></tr>${lu.map(m=>`<tr><td>${esc((m.prenom||'')+' '+m.nom)}</td><td>${esc(m.instrument||'')}</td><td>${m.cachet?(+m.cachet).toLocaleString('fr-FR')+' €':'—'}</td></tr>`).join('')}<tr><td colspan="2"><b>Total</b></td><td><b>${lu.reduce((s,m)=>s+(+m.cachet||0),0).toLocaleString('fr-FR')} €</b></td></tr></table>`;
   if(secs.includes('stats'))body+=`<h3>Statistiques</h3><p>Dates : <b>${ds.length}</b> · CA Cessions : <b>${ca.toLocaleString('fr-FR')} €</b> · CA moyen/représentation : <b>${dsPx.length?Math.round(ca/dsPx.length).toLocaleString('fr-FR'):0} €</b> · Commissions : <b>${comm.toLocaleString('fr-FR')} €</b></p>`;
   if(secs.includes('saisons'))body+=`<h3>Par saison</h3><p>${Object.entries(bySais).sort().map(([s,n])=>'Saison '+s+' : '+n+' date(s)').join(' · ')}</p>`;
   if(secs.includes('listedates'))body+=`<h3>Dates</h3><table border="1" cellpadding="6" style="border-collapse:collapse"><tr><th>Date</th><th>Lieu</th><th>Statut</th><th>Cession HT</th></tr>${ds.map(x=>`<tr><td>${x.date_spectacle}</td><td>${esc(lieuLabel(x))}</td><td>${(STATUTS[x.statut]||[x.statut])[0]}</td><td>${x.prix_cession?(+x.prix_cession).toLocaleString('fr-FR')+' €':'—'}</td></tr>`).join('')}</table>`;
@@ -1685,12 +1700,12 @@ async function openDate(id,fromRoute){
       <input class="f mp" value="${esc(m.prenom||'')}" placeholder="Prénom" style="width:105px">
       <input class="f mn" value="${esc(m.nom)}" placeholder="Nom" style="width:125px">
       <input class="f mi" value="${esc(m.instrument||'')}" placeholder="Instrument" style="flex:1">
-      <input class="f mc" type="number" value="${m.cachet??''}" placeholder="Cachet €" style="width:95px">
+      <input class="f mc" type="number" value="${m.cachet??''}" placeholder="Cachet brut €" style="width:110px">
       <label class="mini" style="white-space:nowrap"><input type="checkbox" class="mr2" ${m.remplacant?'checked':''}> rempl.</label>
       <button class="btn sm danger" onclick="delDateMus(${m.id},${id},this)">✕</button></div>`).join('')||'<p class="mini">Aucun musicien sur cette date.</p>'}</div>
     <div class="flex center" style="gap:7px;margin-top:6px">
       <input class="f" id="dmPrenom" placeholder="Prénom" style="width:105px"><input class="f" id="dmNom" placeholder="Nom" style="width:125px">
-      <input class="f" id="dmInstr" placeholder="Instrument" style="flex:1"><input class="f" id="dmCachet" type="number" placeholder="Cachet €" style="width:95px">
+      <input class="f" id="dmInstr" placeholder="Instrument" style="flex:1"><input class="f" id="dmCachet" type="number" placeholder="Cachet brut €" style="width:95px">
       <button class="btn sm" onclick="addDateMus(${id})">＋ Ajouter</button>
       <button class="btn sm" onclick="reporterLineup(${id},${d.projet_id})">📋 Reporter le line-up officiel</button></div>
     <div class="sec-t">🗂️ Admin (structure V2 — contrats, factures, échéances)</div>
@@ -1773,7 +1788,38 @@ async function loadProjets(){
   return true;
 }
 function artNames(pid){return (DB.projArt[pid]||[]).map(x=>{const a=DB.artistes.find(y=>y.id===x.artiste_id);return a?(x.lead?'⭐ ':'')+a.nom:null;}).filter(Boolean).join(', ');}
-function totCachets(pid){return (DB.lineup[pid]||[]).reduce((s,m)=>s+(+m.cachet||0),0);}
+function totCachets(pid){return (DB.lineup[pid]||[]).filter(m=>!m.remplacant_de).reduce((s,m)=>s+(+m.cachet||0),0);}
+function memberRow(m,id,all){
+  const name=[m.prenom,m.nom].filter(Boolean).join(' ')||'—';
+  const principals=all.filter(x=>(x.categorie||'artiste')===(m.categorie||'artiste')&&!x.remplacant_de&&x.id!==m.id);
+  const tech=(m.categorie||'artiste')==='technicien';
+  return `<details class="acc ${m.lead?'lead':''} ${m.remplacant_de?'rempl':''}" data-lid="${m.id}">
+    <summary>${m.remplacant_de?'<span class="mini">↳ remplaçant</span>':''}${m.lead?'<span class="badge-lead">★ LEAD</span>':''}<span>${esc(name)}</span>${m.instrument?`<span class="mini">— ${esc(m.instrument)}</span>`:''}${m.cachet?`<span class="mini">· ${(+m.cachet).toLocaleString('fr-FR')} € brut</span>`:''}
+      <span style="flex:1"></span>${m.email?`<a href="mailto:${esc(m.email)}" onclick="event.stopPropagation()" title="${esc(m.email)}">✉️</a>`:''}${m.telephone?`<a href="tel:${esc(m.telephone.replace(/\s/g,''))}" onclick="event.stopPropagation()" title="${esc(m.telephone)}">📞</a>`:''}</summary>
+    <div class="acc-b"><div class="fgrid3" style="gap:7px">
+      <div><label class="fl">Prénom</label><input class="f lp" value="${esc(m.prenom||'')}"></div>
+      <div><label class="fl">Nom</label><input class="f ln2" value="${esc(m.nom||'')}"></div>
+      <div><label class="fl">${tech?'Fonction':'Instrument / rôle'}</label><input class="f li" value="${esc(m.instrument||'')}" placeholder="${tech?'Régisseur son, lumière, backliner, tour manager…':'Saxophone, chant…'}"></div>
+      <div><label class="fl">Email</label><input class="f le" value="${esc(m.email||'')}"></div>
+      <div><label class="fl">Téléphone</label><input class="f lt" value="${esc(m.telephone||'')}"></div>
+      <div><label class="fl">Cachet brut (€)</label><input class="f lc" type="number" value="${m.cachet??''}" oninput="updTotal(${id})"></div>
+      ${tech?'<input type="hidden" class="ll" value="false">':`<div><label class="fl">Artiste lead</label><select class="f ll"><option value="false" ${!m.lead?'selected':''}>Non</option><option value="true" ${m.lead?'selected':''}>Oui ★</option></select></div>`}
+      <div><label class="fl">Remplaçant de</label><select class="f lr"><option value="">— titulaire —</option>${principals.map(x=>`<option value="${x.id}" ${m.remplacant_de===x.id?'selected':''}>${esc([x.prenom,x.nom].filter(Boolean).join(' '))}</option>`).join('')}</select></div>
+      <div style="align-self:end"><button class="btn sm danger" onclick="delMusicien(${m.id},${id},this)">✕ Retirer</button></div>
+    </div></div></details>`;
+}
+function orderMembers(list){
+  const principals=list.filter(m=>!m.remplacant_de).sort((a,b)=>(b.lead?1:0)-(a.lead?1:0)||(a.ordre||0)-(b.ordre||0)||(a.nom||'').localeCompare(b.nom||''));
+  const out=[];principals.forEach(p=>{out.push(p);list.filter(m=>m.remplacant_de===p.id).forEach(r=>out.push(r));});
+  list.filter(m=>m.remplacant_de&&!out.includes(m)).forEach(m=>out.push(m));return out;
+}
+function lineupSections(id,lu){
+  const art=lu.filter(m=>(m.categorie||'artiste')!=='technicien'), tech=lu.filter(m=>m.categorie==='technicien');
+  return `<div class="sec-t">🎤 Artistes du projet (${art.length}) <span class="mini" style="text-transform:none;letter-spacing:0">· cachets bruts · ★ = lead, affiché en premier</span></div>
+  ${orderMembers(art).map(m=>memberRow(m,id,lu)).join('')||'<span class="mini">Aucun artiste — ajoute-les ci-dessous.</span>'}
+  <div class="sec-t">🔧 Techniciens (${tech.length}) <span class="mini" style="text-transform:none;letter-spacing:0">· régie son / lumière, backliner, tour manager…</span></div>
+  ${orderMembers(tech).map(m=>memberRow(m,id,lu)).join('')||'<span class="mini">Aucun technicien.</span>'}`;
+}
 function renderProjets(){
   document.getElementById('projBody').innerHTML=(DB.projList||[]).map(p=>{
     const d=DB.deals[p.id]||{};const lu=DB.lineup[p.id]||[];const e=(DB.esthsAll||DB.esths).find(x=>x.id===p.esthetique_id);
@@ -1804,9 +1850,9 @@ async function openProjet(id,fromRoute){
       <div><label class="fl">Esthétique</label><select class="f" id="pEsth"><option value="">—</option>${DB.esths.map(e=>`<option value="${e.id}" ${e.id===p.esthetique_id?'selected':''}>${esc(e.nom)}</option>`).join('')}</select></div>
       <div><label class="fl">Actif</label><select class="f" id="pActif"><option value="true" ${p.actif?'selected':''}>Oui</option><option value="false" ${!p.actif?'selected':''}>Non</option></select></div>
     </div>
-    <div class="sec-t">🎤 Artistes du projet — clique pour lier/délier · ⭐ = lead</div>
+    <div class="sec-t">🎯 Artiste(s) rattaché(s) au projet <span class="mini" style="text-transform:none;letter-spacing:0">(fiche artiste, rentabilité par artiste · clique pour lier/délier)</span></div>
     <div>${(DB.artistes||[]).map(a=>{const link=(DB.projArt[id]||[]).find(x=>x.artiste_id===a.id);return `<span class="chip partiste ${link?'on':''}" data-a="${a.id}" onclick="this.classList.toggle('on')">${esc(a.nom)}</span>`;}).join('')}</div>
-    <div class="flex center" style="gap:8px;margin-top:7px"><label class="fl" style="margin:0">Lead :</label><select class="f" id="pLead" style="width:200px">${(DB.artistes||[]).map(a=>{const link=(DB.projArt[id]||[]).find(x=>x.artiste_id===a.id);return `<option value="${a.id}" ${link&&link.lead?'selected':''}>${esc(a.nom)}</option>`;}).join('')}</select>
+    <div class="flex center" style="gap:8px;margin-top:7px"><label class="fl" style="margin:0">Artiste principal :</label><select class="f" id="pLead" style="width:200px">${(DB.artistes||[]).map(a=>{const link=(DB.projArt[id]||[]).find(x=>x.artiste_id===a.id);return `<option value="${a.id}" ${link&&link.lead?'selected':''}>${esc(a.nom)}</option>`;}).join('')}</select>
     <input class="f" id="pNewArtiste" placeholder="Nouvel artiste…" style="width:180px"><button class="btn sm" onclick="addArtiste(${id})">＋ Artiste</button></div>
     <label class="fl" style="margin-top:12px">Pitch commercial (modifiable avant chaque envoi)</label>
     <textarea class="f" id="pPitch" style="height:56px">${esc(p.pitch||'')}</textarea>
@@ -1818,18 +1864,16 @@ async function openProjet(id,fromRoute){
       <div><label class="fl">Objectif dates (annuel)</label><input class="f" id="dObjD" type="number" value="${d.objectif_dates??''}"></div>
       <div><label class="fl">Objectif commission (€)</label><input class="f" id="dObjC" type="number" value="${d.objectif_commission??''}"></div>
     </div>
-    <div class="sec-t">🎺 Line-up officiel — cachet réel négocié par musicien</div>
-    <div id="pLineup">${lu.map(m=>`<div class="flex center" style="gap:7px;margin-bottom:6px" data-lid="${m.id}">
-      <input class="f lp" value="${esc(m.prenom||'')}" placeholder="Prénom" style="width:110px">
-      <input class="f ln2" value="${esc(m.nom)}" placeholder="Nom" style="width:130px">
-      <input class="f li" value="${esc(m.instrument||'')}" placeholder="Instrument / fonction" style="flex:1">
-      <input class="f lc" type="number" value="${m.cachet??''}" placeholder="Cachet €" style="width:100px" oninput="updTotal(${id})">
-      <button class="btn sm danger" onclick="delMusicien(${m.id},${id},this)">✕</button></div>`).join('')}</div>
-    <div class="flex center" style="gap:7px">
-      <input class="f" id="nmPrenom" placeholder="Prénom" style="width:110px"><input class="f" id="nmNom" placeholder="Nom" style="width:130px">
-      <input class="f" id="nmInstr" placeholder="Instrument" style="flex:1"><input class="f" id="nmCachet" type="number" placeholder="Cachet €" style="width:100px">
-      <button class="btn sm" onclick="addMusicien(${id})">＋ Ajouter</button></div>
-    <p class="mini" style="margin-top:8px">Total cachets : <b id="pTotal">${totCachets(id).toLocaleString('fr-FR')} €</b> — reporté automatiquement sur chaque nouvelle date (modifiable date par date sans toucher au line-up officiel).</p>
+    <label class="fl" style="margin-top:8px">Commentaire / stratégie <span class="mini">(contextualise les chiffres ci-dessus)</span></label>
+    <textarea class="f" id="dCom" style="height:50px" placeholder="Ex. : objectif volontairement élevé car développement international prévu au second semestre…">${esc(d.commentaire_objectif||'')}</textarea>
+    <div id="pLineup">${lineupSections(id,lu)}</div>
+    <div class="card nodirty" style="padding:10px;margin-top:8px;background:var(--surface-2)">
+      <div class="flex center wrap-f" style="gap:7px">
+        <select class="f" id="nmCat" style="width:130px"><option value="artiste">🎤 Artiste</option><option value="technicien">🔧 Technicien</option></select>
+        <input class="f" id="nmPrenom" placeholder="Prénom" style="width:110px"><input class="f" id="nmNom" placeholder="Nom" style="width:130px">
+        <input class="f" id="nmInstr" placeholder="Instrument / fonction" style="flex:1"><input class="f" id="nmCachet" type="number" placeholder="Cachet brut €" style="width:120px">
+        <button class="btn sm" onclick="addMusicien(${id})">＋ Ajouter</button></div></div>
+    <p class="mini" style="margin-top:8px">Total cachets bruts : <b id="pTotal">${totCachets(id).toLocaleString('fr-FR')} €</b> — reporté automatiquement sur chaque nouvelle date (modifiable date par date sans toucher au line-up officiel).</p>
     <div class="sec-t">👥 Intervenants — rôles libres · case « copie mails de confirmation »</div>
     <div id="pInterv">${iv.map(i=>{const r=DB.roles.find(x=>x.id===i.role_id);return `<div class="flex center" style="gap:7px;margin-bottom:6px" data-iid="${i.id}">
       <select class="f ir" style="width:150px">${DB.roles.map(x=>`<option value="${x.id}" ${x.id===i.role_id?'selected':''}>${esc(x.nom)}</option>`).join('')}</select>
@@ -1858,7 +1902,7 @@ async function openProjet(id,fromRoute){
   </div>`;
   document.getElementById('overlay').classList.add('open');
 }
-function updTotal(pid){let t=0;document.querySelectorAll('#pLineup .lc').forEach(i=>t+=+i.value||0);document.getElementById('pTotal').textContent=t.toLocaleString('fr-FR')+' €';}
+function updTotal(pid){let t=0;document.querySelectorAll('#pLineup [data-lid]').forEach(d=>{if(!d.querySelector('.lr').value)t+=+d.querySelector('.lc').value||0;});document.getElementById('pTotal').textContent=t.toLocaleString('fr-FR')+' €';}
 async function saveProjet(id){
   const g=x=>document.getElementById(x).value.trim()||null;
   const {error:e1}=await sb.from('projets').update({...socialsRead('pS_'),nom:g('pNom'),esthetique_id:+document.getElementById('pEsth').value||null,
@@ -1866,10 +1910,12 @@ async function saveProjet(id){
     interets_strategiques:[...document.querySelectorAll('.chip.intstrat.on')].map(c=>c.dataset.i)}).eq('id',id);
   const {error:e2}=await sb.from('deals').upsert({projet_id:id,taux_commission:(+document.getElementById('dTaux').value||12)/100,
     partage_resultat:(+document.getElementById('dPart').value||0)/100,
-    objectif_dates:+document.getElementById('dObjD').value||null,objectif_commission:+document.getElementById('dObjC').value||null});
+    objectif_dates:+document.getElementById('dObjD').value||null,objectif_commission:+document.getElementById('dObjC').value||null,commentaire_objectif:document.getElementById('dCom').value.trim()||null});
   for(const div of document.querySelectorAll('#pLineup [data-lid]')){
     await sb.from('lineup').update({prenom:div.querySelector('.lp').value.trim()||null,nom:div.querySelector('.ln2').value.trim()||'—',
-      instrument:div.querySelector('.li').value.trim()||null,cachet:+div.querySelector('.lc').value||null}).eq('id',+div.dataset.lid);
+      instrument:div.querySelector('.li').value.trim()||null,cachet:+div.querySelector('.lc').value||null,
+      email:div.querySelector('.le').value.trim()||null,telephone:div.querySelector('.lt').value.trim()||null,
+      lead:div.querySelector('.ll').value==='true',remplacant_de:+div.querySelector('.lr').value||null}).eq('id',+div.dataset.lid);
   }
   for(const div of document.querySelectorAll('#pInterv [data-iid]')){
     await sb.from('projet_intervenants').update({role_id:+div.querySelector('.ir').value,prenom:div.querySelector('.ip').value.trim()||null,
@@ -1894,12 +1940,12 @@ async function addArtiste(pid){
 async function addMusicien(pid){
   const nom=document.getElementById('nmNom').value.trim();
   if(!nom){toast('Nom requis',true);return;}
-  const {error}=await sb.from('lineup').insert({projet_id:pid,nom,prenom:document.getElementById('nmPrenom').value.trim()||null,
+  const {error}=await sb.from('lineup').insert({projet_id:pid,nom,prenom:document.getElementById('nmPrenom').value.trim()||null,categorie:document.getElementById('nmCat').value,
     instrument:document.getElementById('nmInstr').value.trim()||null,cachet:+document.getElementById('nmCachet').value||null});
   if(error){toast(error.message,true);return;}
-  toast('✓ Musicien ajouté'); await loadProjets(); openProjet(pid);
+  toast('✓ Ajouté au line-up'); await loadProjets(); openProjet(pid,true);
 }
-async function delMusicien(id,pid,btn){await sb.from('lineup').delete().eq('id',id);toast('Musicien retiré');await loadProjets();openProjet(pid);}
+async function delMusicien(id,pid,btn){if(!confirm('Retirer cette personne du line-up ?'))return;await sb.from('lineup').delete().eq('id',id);toast('Retiré du line-up');await loadProjets();openProjet(pid,true);}
 async function addInterv(pid){
   const nomFull=document.getElementById('niNom').value.trim();
   if(!nomFull){toast('Nom requis',true);return;}
