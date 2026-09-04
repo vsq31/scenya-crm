@@ -144,7 +144,7 @@
 <div id="appView" style="display:none">
   <div class="topbar">
     <div class="logo">S</div>
-    <div><h1>Scenya CRM</h1><div class="sub"><span onclick="openChangelog()" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px" title="Historique des versions">v1.5</span> · agence de booking</div></div>
+    <div><h1>Scenya CRM</h1><div class="sub"><span onclick="openChangelog()" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px" title="Historique des versions">v1.6</span> · agence de booking</div></div>
     <div class="tabs">
       <div class="tab on" data-v="annuaire" onclick="switchTab('annuaire')">🏛️ Annuaire</div>
       <div class="tab" data-v="pilotage" onclick="switchTab('pilotage')">📊 Pilotage</div>
@@ -152,6 +152,7 @@
       <div class="tab" data-v="dates" onclick="switchTab('dates')">📅 Dates</div>
       <div class="tab" data-v="billet" onclick="switchTab('billet')">🎟️ Billetterie</div>
       <div class="tab" data-v="renta" onclick="switchTab('renta')">📈 Rentabilité</div>
+      <div class="tab" data-v="medias" onclick="switchTab('medias')">📻 Médias</div>
       <div class="tab" data-v="rappro" onclick="switchTab('rappro')">🔗 Rapprochement dates</div>
     </div>
     <div style="flex:1"></div>
@@ -177,6 +178,7 @@
           <div><label class="fl">Jauge de</label><input class="f" id="fJmin" type="number" placeholder="min" oninput="renderList()" style="width:80px"></div>
           <div><label class="fl">à</label><input class="f" id="fJmax" type="number" placeholder="max" oninput="renderList()" style="width:80px"></div>
           <div><label class="fl">Qualif.</label><select class="f" id="fQualif" onchange="renderList()" style="width:125px"><option value="">Actives</option><option>Client ++</option><option>Client</option><option>Prospect</option><option>Archivé</option><option>Blacklist</option></select></div>
+          <div><label class="fl">Source</label><select class="f" id="fSrc" onchange="renderList()" style="width:130px"><option value="">Toutes</option><option value="agence">Base agence</option><option value="prospectacles">Prospectacles</option></select></div>
           <div style="align-self:flex-end"><div class="flex" style="gap:7px"><button class="btn sm primary" onclick="openNewStruct('Prospect')">＋ Prospect</button><button class="btn sm primary" onclick="openNewStruct('Client')">＋ Client</button></div></div>
         </div>
         <div class="flex wrap-f" style="gap:20px;margin-top:12px">
@@ -262,6 +264,19 @@
         <p class="mini" style="margin-top:9px">Calculs sur les dates non annulées avec prix de cession renseigné · commission au taux du deal de chaque projet.</p></div>
     </div>
 
+    <div id="v-medias" style="display:none">
+      <div class="card"><div class="flex wrap-f" style="gap:12px;align-items:flex-end">
+        <div><label class="fl">Recherche</label><input class="f" id="mdTxt" placeholder="Nom / ville…" oninput="renderMedias()" style="width:220px"></div>
+        <div><label class="fl">Catégorie</label><select class="f" id="mdCat" onchange="renderMedias()"><option value="">Toutes</option><option value="radio">Radios</option><option value="presse">Presse</option></select></div>
+        <div><label class="fl">Pays</label><select class="f" id="mdPays" onchange="fillMediaRegions();renderMedias()"><option value="">Tous</option></select></div>
+        <div><label class="fl">Région</label><select class="f" id="mdReg" onchange="renderMedias()"><option value="">Toutes</option></select></div>
+        <div><label class="fl">Langue</label><select class="f" id="mdLang" onchange="renderMedias()"><option value="">Toutes</option></select></div>
+        <div style="flex:1"></div>
+        <div><button class="btn sm" onclick="exportMediasCSV()">⬇️ Export CSV (sélection)</button></div>
+      </div></div>
+      <div class="card"><div class="flex between center"><b id="mdCount">—</b><span class="mini">contacts promo (radios & presse) · source Prospectacles 28.08.2026</span></div>
+        <div class="tbl-wrap"><table><thead><tr><th>Média</th><th>Catégorie</th><th>Ville / région</th><th>Email</th><th>Téléphone</th><th>Langue · fréquence</th></tr></thead><tbody id="mdBody"></tbody></table></div></div>
+    </div>
     <div id="v-rappro" style="display:none">
       <div class="card"><b>🔗 Rapprochement des dates orphelines</b>
         <p class="mini" style="margin-top:6px">Ces dates du RÉCAP ne sont pas encore rattachées à un lieu de l'annuaire. Choisis le bon lieu (suggestions automatiques) ou laisse en texte libre.</p></div>
@@ -326,14 +341,28 @@ async function doLogin(){
 }
 
 /* ---------- LOAD ---------- */
+/* Chargement paginé (Supabase limite à 1 000 lignes par requête) */
+async function fetchAll(table,select,order){
+  let from=0,all=[];
+  while(true){
+    let q=sb.from(table).select(select||'*').range(from,from+999);
+    if(order)q=q.order(order);
+    const {data,error}=await q;
+    if(error)return {data:null,error};
+    all=all.concat(data||[]);
+    if(!data||data.length<1000)break;
+    from+=1000;
+  }
+  return {data:all,error:null};
+}
 async function loadAll(){
   const [lt,es,lx,sp,jg,ct,dt,pj]=await Promise.all([
     sb.from('lieu_types').select('*'),
     sb.from('esthetiques').select('*'),
-    sb.from('lieux').select('*').order('nom'),
-    sb.from('structures_porteuses').select('*'),
-    sb.from('jauges').select('*'),
-    sb.from('contacts').select('*'),
+    fetchAll('lieux','*','nom'),
+    fetchAll('structures_porteuses','*','id'),
+    fetchAll('jauges','*','id'),
+    fetchAll('contacts','*','id'),
     sb.from('dates').select('id,date_spectacle,lieu_texte,ville_texte,projet_id').is('lieu_id',null).order('date_spectacle'),
     sb.from('projets').select('id,nom')
   ]);
@@ -365,7 +394,7 @@ function renderKpis(){
   const clients=Object.values(DB.porteuses).filter(s=>s.qualif==='Client').length;
   document.getElementById('kpis').innerHTML=`
     <div class="kpi"><div class="v">${Object.keys(DB.porteuses).length}</div><div class="l">🏛️ Structures porteuses</div></div>
-    <div class="kpi"><div class="v">${DB.lieux.length}</div><div class="l">🎪 Lieux / festivals / événements</div></div>
+    <div class="kpi"><div class="v">${DB.lieux.length}</div><div class="l">🎪 Lieux / festivals / événements <span class="mini">· ${DB.lieux.filter(l=>!l.source).length} base agence · ${DB.lieux.filter(l=>l.source).length} Prospectacles</span></div></div>
     <div class="kpi"><div class="v">${Object.values(DB.contacts).flat().length}</div><div class="l">👥 Contacts typés</div></div>
     <div class="kpi"><div class="v">${DB.datesOrphelines.length}</div><div class="l">🔗 Dates à rattacher</div></div>`;
 }
@@ -405,7 +434,10 @@ function renderList(){
   const jmin=+document.getElementById('fJmin').value||0;
   const jmax=+document.getElementById('fJmax').value||0;
   const qf=document.getElementById('fQualif').value;
+  const src=document.getElementById('fSrc').value;
   let rows=DB.lieux.filter(l=>{
+    if(src==='agence'&&l.source)return false;
+    if(src==='prospectacles'&&!l.source)return false;
     const sp=DB.porteuses[l.structure_porteuse_id]||{};
     const cts=(DB.contacts[l.id]||[]).map(c=>(c.nom||'')+(c.prenom||'')).join(' ');
     if(q && !((l.nom||'')+' '+(l.ville||'')+' '+cts).toLowerCase().includes(q)) return false;
@@ -421,12 +453,13 @@ function renderList(){
     return true;
   });
   window.LISTIDS=rows.map(l=>l.id);
-  document.getElementById('listCount').textContent=rows.length+' lieu(x)'+(filtDiff.size||filtProg.size?' — recherche croisée active':'');
-  document.getElementById('listBody').innerHTML=rows.map(l=>{
+  const MAXR=300;
+  document.getElementById('listCount').textContent=rows.length+' lieu(x)'+(filtDiff.size||filtProg.size?' — recherche croisée active':'')+(rows.length>MAXR?' — affichage des '+MAXR+' premiers, affinez les filtres':'');
+  document.getElementById('listBody').innerHTML=rows.slice(0,MAXR).map(l=>{
     const sp=DB.porteuses[l.structure_porteuse_id]||{};
     const js=DB.jauges[l.id]||[];
     return `<tr class="clik" onclick="openLieu(${l.id})">
-      <td class="row-strong">${compDot(l)}${esc(l.nom)}</td>
+      <td class="row-strong">${compDot(l)}${esc(l.nom)}${l.source?' <span class="mini" title="'+esc(l.source)+'">📥</span>':''}</td>
       <td class="mini">${esc(typeName(l.type_id))}</td>
       <td>${esthNames(l.esthetiques).map(n=>`<span class="pill c">${esc(n)}</span>`).join(' ')||'<span class="mini">Non renseigné</span>'}</td>
       <td>${esc(l.ville||'—')} <span class="mini">(${esc(l.departement||'—')})</span></td>
@@ -466,6 +499,10 @@ async function openLieu(id){
       <div><label class="fl">Email</label><input class="f" id="mEmail" value="${esc(l.email||'')}"></div>
       <div><label class="fl">Site</label><input class="f" id="mSite" value="${esc(l.site||'')}"></div>
     </div>
+    ${(l.a_propos||l.sous_types||l.facebook)?`<div class="sec-t">ℹ️ À propos${l.source?' <span class="mini" style="text-transform:none;letter-spacing:0">(source : '+esc(l.source)+')</span>':''}</div>
+    ${l.sous_types?`<p class="mini" style="margin:0 0 6px">${esc(l.sous_types.replace(/\s*\|\s*/g,' · '))}</p>`:''}
+    ${l.a_propos?`<p style="font-size:13px;line-height:1.55;margin:0 0 6px">${esc(l.a_propos)}</p>`:''}
+    ${l.facebook?`<p class="mini" style="margin:0">Facebook : <a href="${esc(l.facebook.startsWith('http')?l.facebook:'https://'+l.facebook)}" target="_blank">${esc(l.facebook)}</a></p>`:''}`:''}
     <div class="sec-t">📅 Période de diffusion (quand les spectacles ont lieu)</div>
     <div class="month-grid" id="mDiff">${mkMonths('diff',l.diffusion_mois)}</div>
     <input class="f" id="mDiffDetail" value="${esc(l.diffusion_detail||'')}" placeholder="Précision libre : « du 1er au 5 août », « 1er week-end du mois »…" style="margin-top:7px">
@@ -672,9 +709,72 @@ function navLieu(curId,delta){
   const n=ids[i+delta];
   if(n!==undefined)openLieu(n); else toast(delta>0?'Fin de la sélection filtrée':'Début de la sélection filtrée');
 }
+/* ===== MÉDIAS (radios & presse — v1.6) ===== */
+async function loadMedias(){
+  document.getElementById('mdCount').textContent='Chargement…';
+  const {data,error}=await fetchAll('medias','*','nom');
+  if(error){toast(error.message,true);return;}
+  DB.medias=data;
+  const pays=[...new Set(data.map(m=>m.pays).filter(Boolean))].sort((a,b)=>a==='France'?-1:b==='France'?1:a.localeCompare(b));
+  document.getElementById('mdPays').innerHTML='<option value="">Tous</option>'+pays.map(p=>`<option ${p==='France'?'selected':''}>${esc(p)}</option>`).join('');
+  const langs=[...new Set(data.map(m=>m.langue).filter(Boolean))].sort();
+  document.getElementById('mdLang').innerHTML='<option value="">Toutes</option>'+langs.map(p=>`<option>${esc(p)}</option>`).join('');
+  fillMediaRegions(); renderMedias();
+}
+function fillMediaRegions(){
+  const p=document.getElementById('mdPays').value;
+  const regs=[...new Set((DB.medias||[]).filter(m=>!p||m.pays===p).map(m=>m.region).filter(Boolean))].sort();
+  document.getElementById('mdReg').innerHTML='<option value="">Toutes</option>'+regs.map(r=>`<option>${esc(r)}</option>`).join('');
+}
+function filteredMedias(){
+  const q=(document.getElementById('mdTxt').value||'').toLowerCase(), cat=document.getElementById('mdCat').value, p=document.getElementById('mdPays').value, rg=document.getElementById('mdReg').value, lg=document.getElementById('mdLang').value;
+  return (DB.medias||[]).filter(m=>(!q||((m.nom||'')+' '+(m.ville||'')+' '+(m.a_propos||'')).toLowerCase().includes(q))&&(!cat||m.categorie===cat)&&(!p||m.pays===p)&&(!rg||m.region===rg)&&(!lg||m.langue===lg));
+}
+function renderMedias(){
+  const rows=filteredMedias(), MAXR=300;
+  document.getElementById('mdCount').textContent=rows.length+' média(s)'+(rows.length>MAXR?' — affichage des '+MAXR+' premiers':'');
+  document.getElementById('mdBody').innerHTML=rows.slice(0,MAXR).map(m=>`<tr class="clik" onclick="openMedia(${m.id})">
+    <td class="row-strong">${esc(m.nom)}</td><td><span class="pill ${m.categorie==='radio'?'c':'b'}">${m.categorie==='radio'?'📻 Radio':'📰 Presse'}</span></td>
+    <td>${esc(m.ville||'—')} <span class="mini">${esc(m.region||m.pays||'')}</span></td>
+    <td class="mini">${m.email?`<a href="mailto:${esc(m.email)}">${esc(m.email)}</a>`:'—'}</td><td class="mini">${esc(m.telephone||'—')}</td>
+    <td class="mini">${esc([m.langue,m.frequence].filter(Boolean).join(' · ')||'—')}</td></tr>`).join('');
+}
+async function openMedia(id){
+  const m=(DB.medias||[]).find(x=>x.id===id); if(!m)return;
+  const notesM=await fetchNotes('media',id);
+  const row=(k,v,link)=>v?`<div><label class="fl">${k}</label><div style="font-size:13px">${link?`<a href="${esc(link)}" target="_blank">${esc(v)}</a>`:esc(v)}</div></div>`:'';
+  document.getElementById('modal').innerHTML=`
+  <div class="modal-h"><span style="font-size:20px">${m.categorie==='radio'?'📻':'📰'}</span><div><h3>${esc(m.nom)}</h3><span class="mini">${esc([m.categorie==='radio'?'Radio':'Presse',m.ville,m.region,m.pays].filter(Boolean).join(' · '))}</span></div><button class="btn sm" onclick="closeModal()">✕</button></div>
+  <div class="modal-b">
+    <div class="fgrid3">
+      ${row('Contact',m.prenom)}${row('Email',m.email,m.email?'mailto:'+m.email:null)}${row('Téléphone',m.telephone)}
+      ${row('Site',m.site,m.site?(m.site.startsWith('http')?m.site:'https://'+m.site):null)}${row('Facebook',m.facebook,m.facebook?(m.facebook.startsWith('http')?m.facebook:'https://'+m.facebook):null)}${row('Stream',m.stream,m.stream?(m.stream.startsWith('http')?m.stream:'https://'+m.stream):null)}
+      ${row('Adresse',[m.adresse,m.cp,m.ville].filter(Boolean).join(', '))}${row('Langue',m.langue)}${row('Fréquence',m.frequence)}
+      ${row('Type',(m.types||'').replace(/\s*\|\s*/g,' · '))}${row('Sous-type',(m.sous_types||'').replace(/\s*\|\s*/g,' · '))}${row('Publics',(m.publics||'').replace(/\s*\|\s*/g,' · '))}${row('Propriétaire',m.proprietaire)}
+    </div>
+    ${m.a_propos?`<p style="font-size:13px;line-height:1.55;margin:10px 0 0">${esc(m.a_propos)}</p>`:''}
+    ${notesHtml('media',id,notesM)}
+  </div>`;
+  document.getElementById('overlay').classList.add('open');
+}
+function exportMediasCSV(){
+  const rows=filteredMedias();
+  const H=['nom','categorie','pays','region','ville','email','telephone','site','langue','frequence','prenom'];
+  const csv=[H.join(';')].concat(rows.map(m=>H.map(k=>'"'+String(m[k]||'').replace(/"/g,'""')+'"').join(';'))).join('\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv'}));a.download='medias_scenya.csv';a.click();
+  toast('⬇️ '+rows.length+' média(s) exporté(s)');
+}
+
 /* ===== Historique des versions ===== */
-const APP_VERSION='1.5';
+const APP_VERSION='1.6';
 const CHANGELOG=[
+ ['1.6','4 septembre 2026','Base Prospectacles',[
+   'Import de 8 687 structures jazz (France) depuis la base Prospectacles du 28/08/2026',
+   'Fiches existantes enrichies sans écrasement (jauge, calendrier, esthétique, site, description)',
+   'Jauges importées en fourchette, calendrier de diffusion et esthétiques renseignés automatiquement',
+   'Filtre « Source » (base agence / Prospectacles) et marqueur 📥 sur les fiches importées',
+   'Nouvel onglet Médias : 4 544 radios et 1 031 titres de presse, filtrables, exportables, annotables',
+   'Chargement par pages pour supporter des milliers de fiches']],
  ['1.5','2 septembre 2026','Collaboration & confort',[
    'Utilisateurs connectés visibles en temps réel dans la barre du haut',
    'Mentions @prénom dans les notes → notification à la personne concernée',
@@ -864,7 +964,8 @@ async function lierDate(dateId){
 
 function switchTab(v){
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.dataset.v===v));
-  ['annuaire','pilotage','projets','dates','billet','renta','rappro'].forEach(x=>{const el=document.getElementById('v-'+x);if(el)el.style.display=x===v?'block':'none';});
+  ['annuaire','pilotage','projets','dates','billet','renta','medias','rappro'].forEach(x=>{const el=document.getElementById('v-'+x);if(el)el.style.display=x===v?'block':'none';});
+  if(v==='medias'&&!DB.medias)loadMedias();
   if(v==='pilotage')renderPilotage();
   if(v==='renta')renderRenta();
   if(v==='billet')renderBillet();
