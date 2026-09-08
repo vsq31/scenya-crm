@@ -153,7 +153,7 @@
 <div id="appView" style="display:none">
   <div class="topbar">
     <div class="logo">S</div>
-    <div><h1>Scenya CRM</h1><div class="sub"><span onclick="openChangelog()" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px" title="Historique des versions">v2.3</span> · agence de booking</div></div>
+    <div><h1>Scenya CRM</h1><div class="sub"><span onclick="openChangelog()" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px" title="Historique des versions">v2.4</span> · agence de booking</div></div>
     <div class="tabs">
       <a class="tab on" data-v="annuaire" href="#/annuaire" style="text-decoration:none">🏛️ Annuaire</a>
       <a class="tab" data-v="pilotage" href="#/pilotage" style="text-decoration:none">📊 Pilotage</a>
@@ -209,6 +209,8 @@
     </div>
 
     <div id="v-projets" style="display:none">
+      <div class="card"><div class="flex between center wrap-f" style="margin-bottom:6px"><b>🎤 Artistes → projets</b><button class="btn sm primary" onclick="createArtisteStandalone()">＋ Artiste</button></div>
+        <div id="artBody"></div></div>
       <div class="card"><div class="flex between center wrap-f" style="margin-bottom:4px"><b>🎷 Projets & deals</b><button class="btn sm primary" onclick="openNewProjet()">＋ Projet</button></div>
         <p class="mini" style="margin-top:6px">Fiche centrale de chaque projet : deal (taux de commission propre, défaut 12 %), line-up officiel avec cachet réel par musicien, intervenants avec rôles libres, intérêt stratégique.</p></div>
       <div class="card"><div class="scroll-y"><table>
@@ -271,6 +273,7 @@
     </div>
 
     <div id="v-renta" style="display:none">
+      <div class="card" id="rentaArtistes"></div>
       <div class="card"><div class="flex wrap-f between center" style="gap:11px">
         <div><b>📈 Performance économique des projets</b>
           <p class="mini" style="margin-top:5px">Le nombre de dates seul ne suffit pas : un projet peut produire deux fois plus de CA avec moins de dates. Classement par <b>CA moyen généré par représentation</b>. La rentabilité n'est pas le seul critère — les intérêts stratégiques sont affichés en regard.</p></div>
@@ -677,14 +680,14 @@ async function checkAndCreateStruct(qualif,force){
   toast('✓ '+qualif+' « '+nom+' » créé');
   await loadAll(); openLieu(li.id);
 }
-function openNewProjet(){
+function openNewProjet(artId){
   document.getElementById('modal').innerHTML=`
   <div class="modal-h"><span style="font-size:20px">🎷</span><h3>Ajouter un projet</h3><button class="btn sm" onclick="closeModal()">✕</button></div>
   <div class="modal-b">
     <div class="fgrid">
       <div><label class="fl">Nom du projet *</label><input class="f" id="npNom2"></div>
       <div><label class="fl">Esthétique</label><select class="f" id="npEsth"><option value="">—</option>${DB.esths.map(e=>`<option value="${e.id}">${esc(e.nom)}</option>`).join('')}</select></div>
-      <div><label class="fl">Artiste (lead)</label><select class="f" id="npArt"><option value="">— aucun —</option>${(DB.artistes||[]).map(a=>`<option value="${a.id}">${esc(a.nom)}</option>`).join('')}</select></div>
+      <div><label class="fl">Artiste (lead)</label><select class="f" id="npArt"><option value="">— aucun —</option>${(DB.artistes||[]).map(a=>`<option value="${a.id}" ${artId===a.id?'selected':''}>${esc(a.nom)}</option>`).join('')}</select></div>
       <div><label class="fl">…ou nouvel artiste</label><input class="f" id="npArtNew" placeholder="Nom du nouvel artiste"></div>
     </div>
     <button class="btn primary" onclick="createProjet()">💾 Créer le projet</button>
@@ -729,6 +732,8 @@ async function addNote(entite,id){
   document.getElementById('notesList').innerHTML=list.map(n=>`<div style="padding:7px 0;border-bottom:1px solid var(--line)"><span class="mini"><b>${esc(n.auteur||'—')}</b> · ${(n.created_at||'').slice(0,16).replace('T',' ')}</span><div style="font-size:13px;margin-top:2px">${esc(n.contenu)}</div></div>`).join('');
 }
 /* ===== LOT C : colonne projets + navigation ===== */
+function projColor(p){if(!p)return '#b0b3d8';if(typeof p!=='object')p=(DB.projList||[]).find(x=>x.id===p)||{};return p.couleur||projColors(((p.id||1)-1)%16);}
+function projDot(p,size){const c=projColor(p);return `<span style="display:inline-block;width:${size||10}px;height:${size||10}px;border-radius:3px;background:${c};vertical-align:middle;margin-right:5px;flex-shrink:0"></span>`;}
 function projColors(i){const P=['#7c5cff','#41d9d9','#ffb454','#3ecf8e','#ff6b9a','#a48bff','#5c9dff','#ff8a5c','#6be5c1','#c99bff','#ffd166','#8affc1','#ff9ecb','#7ce0ff','#b0b3d8','#ff7a7a'];return P[i%P.length];}
 function renderProjSide(){
   const el=document.getElementById('projSide'); if(!el||!DB.projList)return;
@@ -738,7 +743,7 @@ function renderProjSide(){
   el.innerHTML=`<div class="ps-item" onclick="toggleSide()" title="Replier / déplier">${collapsed?'»':'«'} <span class="ps-label">Replier</span></div>
     <div class="ps-title">🎷 Projets actifs</div>
     ${collapsed?'':`<select class="f ps-label" style="width:100%;margin:0 0 6px;padding:5px 8px;font-size:12px" onchange="window.SIDE_ESTH=this.value;renderProjSide()"><option value="">Toutes esthétiques</option>${(DB.esths||[]).filter(e=>e.nom!=='Toutes esthétiques').map(e=>`<option value="${e.id}" ${fe==e.id?'selected':''}>${esc(e.nom)}</option>`).join('')}</select>`}
-    ${projs.map((p,i)=>`<a class="ps-item" href="#/projet/${p.id}" title="${esc(p.nom)}"><span class="ps-dot" style="background:${projColors(i)}"></span><span class="ps-label">${esc(p.nom)}</span></a>`).join('')}`;
+    ${projs.map((p,i)=>`<a class="ps-item" href="#/projet/${p.id}" title="${esc(p.nom)}"><span class="ps-dot" style="background:${projColor(p)}"></span><span class="ps-label">${esc(p.nom)}</span></a>`).join('')}`;
   document.body.classList.toggle('sideOpen',!collapsed);
   document.body.classList.toggle('sideCollapsed',collapsed);
 }
@@ -821,6 +826,85 @@ function exportMediasCSV(){
   const csv=[H.join(';')].concat(rows.map(m=>H.map(k=>'"'+String(m[k]||'').replace(/"/g,'""')+'"').join(';'))).join('\n');
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv'}));a.download='medias_scenya.csv';a.click();
   toast('⬇️ '+rows.length+' média(s) exporté(s)');
+}
+
+/* ===== LOT L : MAIL / APPEL DE GROUPE ===== */
+function grpSelect(cat){document.querySelectorAll('#modal .grp').forEach(c=>{c.checked=cat===''?false:cat==='equipe'?true:c.dataset.cat===cat;});}
+function grpPick(k){return [...document.querySelectorAll('#modal .grp:checked')].map(c=>c.dataset[k]).filter(Boolean);}
+function grpMail(){const to=grpPick('email');if(!to.length){toast('Aucune adresse dans la sélection — coche des membres ayant un email',true);return;}const p=(DB.projList||[]).find(x=>location.hash.endsWith('/projet/'+x.id));window.location.href='mailto:?bcc='+encodeURIComponent(to.join(','))+'&subject='+encodeURIComponent((p?p.nom+' — ':'')+'');toast('✉️ '+to.length+' destinataire(s) en Cci');}
+async function grpTel(){const t=grpPick('tel');if(!t.length){toast('Aucun numéro dans la sélection',true);return;}try{await navigator.clipboard.writeText(t.join('\n'));}catch(e){}alert('📞 Numéros du groupe (copiés dans le presse-papiers) :\n\n'+t.join('\n'));}
+
+/* ===== LOT L : FICHE ARTISTE + STATS À DEUX NIVEAUX ===== */
+function projetsOf(artId){return (DB.projList||[]).filter(p=>(DB.projArt[p.id]||[]).some(x=>x.artiste_id===artId));}
+function statsFor(projIds){
+  const ds=(DB.datesAll||[]).filter(d=>projIds.includes(d.projet_id));
+  const byS={};ds.forEach(d=>{byS[d.statut]=(byS[d.statut]||0)+1;});
+  const real=ds.filter(d=>['confirmee','realisee'].includes(d.statut)),opt=ds.filter(d=>d.statut==='option'),ints=ds.filter(d=>['interet','prospection'].includes(d.statut));
+  const sum=a=>a.reduce((s,d)=>s+commOf(d),0),ca=a=>a.reduce((s,d)=>s+(+d.prix_cession||0),0);
+  const negos=(DB.negos||[]).filter(n=>projIds.includes(n.projet_id));const byN={};negos.forEach(n=>{byN[n.statut]=(byN[n.statut]||0)+1;});
+  const bySais={};ds.forEach(d=>{const s=saisonOf(d.date_spectacle);bySais[s]=(bySais[s]||0)+1;});
+  const pxs=real.filter(d=>+d.prix_cession>0);
+  return {n:ds.length,byS,real:real.length,opt:opt.length,ints:ints.length,caReal:ca(real),commReal:sum(real),commOpt:sum(opt),commInt:sum(ints),caMoy:pxs.length?Math.round(ca(pxs)/pxs.length):0,negos:negos.length,byN,bySais,structures:new Set(real.map(d=>d.structure_porteuse_id).filter(Boolean)).size};
+}
+function statsHtml(s,titre){
+  return `<div class="kpis" style="margin:6px 0 10px">
+    <div class="kpi"><div class="v" style="color:var(--green)">${s.commReal.toLocaleString('fr-FR')} €</div><div class="l">✅ Commission réalisée — ${s.real} date(s) · CA ${s.caReal.toLocaleString('fr-FR')} €</div></div>
+    <div class="kpi"><div class="v" style="color:var(--amber)">${s.commOpt.toLocaleString('fr-FR')} €</div><div class="l">⏳ Prévisionnel (options) — ${s.opt}</div></div>
+    <div class="kpi"><div class="v">${s.commInt.toLocaleString('fr-FR')} €</div><div class="l">🎯 Potentiel (intérêt/prospection) — ${s.ints}</div></div>
+    <div class="kpi"><div class="v">${s.caMoy.toLocaleString('fr-FR')} €</div><div class="l">💶 Cession moyenne (réalisé) · ${s.structures} structure(s)</div></div></div>
+  <div class="flex wrap-f" style="gap:6px;margin-bottom:6px"><span class="mini">Dates par saison :</span>${Object.entries(s.bySais).sort().map(([k,v])=>`<span class="pill m">${k} : ${v}</span>`).join('')||'<span class="mini">—</span>'}</div>
+  <div class="flex wrap-f" style="gap:6px"><span class="mini">Négociations (${s.negos}) :</span>${NEGO_ORDER.filter(k=>s.byN[k]).map(k=>`<span class="pill ${NEGO_ST[k][1]}">${NEGO_ST[k][0]} : ${s.byN[k]}</span>`).join('')||'<span class="mini">aucune</span>'}</div>`;
+}
+async function openArtiste(id,fromRoute){
+  const a=(DB.artistes||[]).find(x=>x.id===id); if(!a){toast('Artiste introuvable',true);return;}
+  if(!fromRoute&&window.DIRTY&&!(await guardDirty()))return; window.DIRTY=false; window.SAVE_FN=()=>saveArtiste(id);
+  if(!fromRoute)setHash('/artiste/'+id);
+  const projs=projetsOf(id);const notesA=await fetchNotes('artiste',id);
+  const sel=window.ART_SEL&&projs.some(p=>p.id===window.ART_SEL)?window.ART_SEL:null;
+  const s=statsFor(sel?[sel]:projs.map(p=>p.id));const selP=sel?projs.find(p=>p.id===sel):null;
+  document.getElementById('modal').innerHTML=`
+  <div class="modal-h"><span style="font-size:20px">🎤</span><div><h3>${esc(a.nom)}</h3><span class="mini">${projs.length} projet(s) · ${s.n} date(s) au total</span></div>
+    <button class="btn sm primary" onclick="saveArtiste(${id})">💾 Enregistrer</button><button class="btn sm" onclick="closeModal()">✕</button></div>
+  <div class="modal-b">
+    <div class="sec-t">🎷 Projets rattachés (${projs.length}) <span class="mini" style="text-transform:none;letter-spacing:0">· clique un projet pour ses statistiques propres, « Tous » pour la vision consolidée</span></div>
+    <div class="flex wrap-f nodirty" style="gap:6px;margin-bottom:8px">
+      <button class="btn sm ${!sel?'primary':''}" onclick="window.ART_SEL=null;openArtiste(${id},true)">Tous les projets</button>
+      ${projs.map(p=>`<button class="btn sm ${sel===p.id?'primary':''}" onclick="window.ART_SEL=${p.id};openArtiste(${id},true)">${projDot(p)}${esc(p.nom)}</button>`).join('')}
+      <span style="flex:1"></span><select class="f" id="artNewProj" style="width:200px"><option value="">＋ Rattacher un projet…</option>${(DB.projList||[]).filter(p=>!projs.includes(p)).map(p=>`<option value="${p.id}">${esc(p.nom)}</option>`).join('')}</select><button class="btn sm" onclick="linkProjetArtiste(${id})">Rattacher</button><button class="btn sm" onclick="closeModal(true);openNewProjet(${id})">＋ Nouveau projet</button>
+    </div>
+    <div class="sec-t">📊 Statistiques ${selP?'— '+esc(selP.nom):'consolidées (tous les projets)'}</div>
+    ${statsHtml(s)}
+    ${selP?`<div class="flex" style="gap:6px;margin-top:8px"><a class="btn sm" href="#/projet/${selP.id}">Ouvrir la fiche projet</a><button class="btn sm" onclick="unlinkProjetArtiste(${id},${selP.id})">Détacher ce projet</button></div>`:''}
+    <div class="sec-t">👤 Coordonnées & web</div>
+    <div class="fgrid3">
+      <div><label class="fl">Nom</label><input class="f" id="aNom" value="${esc(a.nom)}"></div>
+      <div><label class="fl">Email${a.email?` <a href="mailto:${esc(a.email)}" class="mini" style="text-transform:none">✉️</a>`:''}</label><input class="f" id="aEmail" value="${esc(a.email||'')}"></div>
+      <div><label class="fl">Téléphone${a.telephone?` <a href="tel:${esc(a.telephone.replace(/\s/g,''))}" class="mini" style="text-transform:none">📞</a>`:''}</label><input class="f" id="aTel" value="${esc(a.telephone||'')}"></div>
+      <div><label class="fl">Site${a.site?` <a href="${esc(absUrl(a.site))}" target="_blank" class="mini" style="text-transform:none">↗</a>`:''}</label><input class="f" id="aSite" value="${esc(a.site||'')}"></div>
+      <div><label class="fl">Instagram${a.instagram?` <a href="${esc(absUrl(a.instagram))}" target="_blank" class="mini" style="text-transform:none">↗</a>`:''}</label><input class="f" id="aInsta" value="${esc(a.instagram||'')}"></div>
+      <div><label class="fl">Facebook${a.facebook?` <a href="${esc(absUrl(a.facebook))}" target="_blank" class="mini" style="text-transform:none">↗</a>`:''}</label><input class="f" id="aFb" value="${esc(a.facebook||'')}"></div>
+      <div><label class="fl">YouTube${a.youtube?` <a href="${esc(absUrl(a.youtube))}" target="_blank" class="mini" style="text-transform:none">↗</a>`:''}</label><input class="f" id="aYt" value="${esc(a.youtube||'')}"></div>
+    </div>
+    <label class="fl" style="margin-top:10px">Note générale</label><textarea class="f" id="aNotes" style="height:56px">${esc(a.notes||'')}</textarea>
+    ${notesHtml('artiste',id,notesA)}
+  </div>`;
+  document.getElementById('overlay').classList.add('open');
+}
+async function saveArtiste(id){
+  const g=x=>document.getElementById(x).value.trim()||null;
+  const {error}=await sb.from('artistes').update({nom:g('aNom')||'—',email:g('aEmail'),telephone:g('aTel'),site:g('aSite'),instagram:g('aInsta'),facebook:g('aFb'),youtube:g('aYt'),notes:g('aNotes')}).eq('id',id);
+  if(error){toast(error.message,true);return;}
+  window.DIRTY=false;toast('✓ Modifications enregistrées');await loadProjets();await openArtiste(id,true);
+}
+async function linkProjetArtiste(artId){const pid=+document.getElementById('artNewProj').value;if(!pid)return;const {error}=await sb.from('projet_artistes').insert({projet_id:pid,artiste_id:artId,lead:!(DB.projArt[pid]||[]).length});if(error){toast(error.message,true);return;}toast('✓ Projet rattaché');await loadProjets();openArtiste(artId,true);}
+async function unlinkProjetArtiste(artId,pid){if(!confirm('Détacher ce projet de l\'artiste ? (le projet est conservé)'))return;await sb.from('projet_artistes').delete().eq('projet_id',pid).eq('artiste_id',artId);window.ART_SEL=null;toast('Projet détaché');await loadProjets();openArtiste(artId,true);}
+async function createArtisteStandalone(){const nom=prompt('Nom du nouvel artiste :');if(!nom||!nom.trim())return;const {data,error}=await sb.from('artistes').insert({nom:nom.trim()}).select().single();if(error){toast(error.message,true);return;}toast('✓ Artiste créé');await loadProjets();openArtiste(data.id);}
+function renderArtistes(){
+  const el=document.getElementById('artBody'); if(!el)return;
+  const arts=(DB.artistes||[]).slice().sort((a,b)=>a.nom.localeCompare(b.nom));
+  el.innerHTML=arts.map(a=>{const projs=projetsOf(a.id);const s=statsFor(projs.map(p=>p.id));
+    return `<details class="acc"><summary>🎤 <a class="lnk" href="#/artiste/${a.id}" onclick="event.stopPropagation()"><b>${esc(a.nom)}</b></a> <span class="mini">— ${projs.length} projet(s) · ${s.real} date(s) confirmées/réalisées · ${s.commReal.toLocaleString('fr-FR')} € de commission</span></summary>
+    <div class="acc-b">${projs.map(p=>`<div class="flex between center" style="padding:5px 0;border-bottom:1px solid var(--line)"><span>${projDot(p)}<a class="lnk" href="#/projet/${p.id}">${esc(p.nom)}</a> <span class="mini">${(DB.datesCount[p.id]||0)} date(s)</span></span><a class="btn sm" href="#/artiste/${a.id}" onclick="window.ART_SEL=${p.id}">📊 Stats du projet</a></div>`).join('')||'<span class="mini">Aucun projet rattaché.</span>'}</div></details>`;}).join('')||'<span class="mini">Aucun artiste.</span>';
 }
 
 /* ===== LOT G : DISTANCE + RECHERCHE AVANCÉE ===== */
@@ -948,7 +1032,7 @@ function negoBlock(spId,lieuId){
   return `<div class="sec-t">🎯 Projets à proposer / intérêt <span class="mini" style="text-transform:none;letter-spacing:0">(${actifs} en cours · ${rows.length-actifs} jamais proposés)</span></div>
   <div class="tbl-wrap"><table><thead><tr><th>Projet</th><th>Statut</th><th>Montant proposé</th><th>Dernier contact</th><th>Prochaine relance</th><th>Booker</th><th></th></tr></thead><tbody>
   ${rows.map(({p,n,st})=>`<tr${n?'':' style="opacity:.6"'}>
-    <td class="row-strong">${esc(p.nom)}</td><td>${negoPill(st)}</td>
+    <td class="row-strong">${projDot(p)}${esc(p.nom)}</td><td>${negoPill(st)}</td>
     <td class="mini">${n&&n.montant_propose?(+n.montant_propose).toLocaleString('fr-FR')+' € HT':'—'}</td>
     <td class="mini">${n?fmtD(n.derniere_interaction):'—'}</td>
     <td class="mini">${n&&n.prochaine_relance?fmtD(n.prochaine_relance)+(n.relance_assignee?' · '+esc(n.relance_assignee):''):'—'}</td>
@@ -1054,14 +1138,23 @@ async function renderTaches(){
   el.innerHTML=`<div class="flex between center wrap-f" style="margin-bottom:8px"><b>✅ Mes tâches — qui dois-je appeler ? <span class="mini">(${list.length})</span></b>${sel}</div>
   ${groups.map(([lab,arr])=>arr.length?`<div class="mini" style="font-weight:800;margin:8px 0 4px">${lab} (${arr.length})</div>`+arr.map(i=>{const sp=DB.porteuses[i.structure_porteuse_id]||{};const p=(DB.projList||[]).find(x=>x.id===i.projet_id);const lid=DB.lieuBySp[i.structure_porteuse_id];
     return `<div class="flex between center wrap-f" style="gap:8px;padding:6px 0;border-bottom:1px solid var(--line)">
-      <div><b>${fmtD(i.relance_date)}</b> · <a class="lnk" href="#/lieu/${lid}" style="font-weight:700">${esc(sp.nom||'—')}</a> ${p?'<span class="pill c">'+esc(p.nom)+'</span>':''} <span class="mini">${esc(i.commentaire||'')}</span> ${i.montant?'<span class="mini">· '+(+i.montant).toLocaleString('fr-FR')+' €</span>':''} ${!who?'<span class="mini">· '+esc(i.relance_assignee||'')+'</span>':''}</div>
+      <div><b>${fmtD(i.relance_date)}</b> · <a class="lnk" href="#/lieu/${lid}" style="font-weight:700">${esc(sp.nom||'—')}</a> ${p?projDot(p)+'<span class="pill c">'+esc(p.nom)+'</span>':''} <span class="mini">${esc(i.commentaire||'')}</span> ${i.montant?'<span class="mini">· '+(+i.montant).toLocaleString('fr-FR')+' €</span>':''} ${!who?'<span class="mini">· '+esc(i.relance_assignee||'')+'</span>':''}</div>
       <button class="btn sm" onclick="relanceFaiteTache(${i.id})">✓ Fait</button></div>`;}).join(''):'').join('')||'<span class="mini">Aucune relance en attente 🎉 — les relances saisies dans l\'historique des échanges apparaissent ici.</span>'}`;
 }
 async function relanceFaiteTache(id){await sb.from('interactions').update({relance_faite:true}).eq('id',id);toast('✓ Fait');await reloadNegos();renderTaches();}
 
 /* ===== Historique des versions ===== */
-const APP_VERSION='2.3';
+const APP_VERSION='2.4';
 const CHANGELOG=[
+ ['2.4','7 septembre 2026','Artiste → projets',[
+   'Bloc « Artistes → projets » en tête de l\'onglet Projets : chaque artiste en accordéon avec ses projets, création d\'artiste',
+   'Fiche Artiste : projets rattachés, statistiques consolidées (commission réalisée, prévisionnelle, potentiel, cession moyenne, saisons, négociations) puis statistiques propres à chaque projet en un clic',
+   'Rattacher / détacher un projet, créer un projet directement depuis l\'artiste ; coordonnées et web de l\'artiste',
+   'Rentabilité : tableau consolidé par artiste au-dessus du classement des projets',
+   'Couleur unique par projet (modifiable dans la fiche projet), reprise dans la colonne, les fiches clients, les dates, les tâches',
+   'Fiche projet : numéro de programme SACEM et référence SACD (repris dans le PDF), artistes rattachés en accordéon',
+   'Équipe : rôles « Responsable réseaux sociaux » et « Attaché(e) de presse », téléphone des intervenants, ✉️ 📞 cliquables',
+   'Mail et appel de groupe : cocher des membres (ou tous les artistes / techniciens / l\'équipe) → mail en Cci ou liste des numéros']],
  ['2.3','4 septembre 2026','Exports des dates',[
    'Onglet Dates : filtres artiste, booker, période du/au, France / étranger, région, et statut « Confirmées », « Options » ou les deux',
    'Export Excel (feuille Dates avec filtres automatiques + feuille Récap), CSV et PDF (impression paysage)',
@@ -1219,7 +1312,7 @@ document.addEventListener('click',e=>{
 function closeModal(fromRoute){
   if(!fromRoute&&window.DIRTY&&!window.FORCE_CLOSE){guardDirty().then(ok=>{if(ok){window.FORCE_CLOSE=true;closeModal();window.FORCE_CLOSE=false;}});return;}
   document.getElementById('overlay').classList.remove('open');window.DIRTY=false;window.SAVE_FN=null;
-  if(!fromRoute&&/^#\/(lieu|projet|date|media)\//.test(location.hash))setHash('/'+window.CURRENT_TAB+(window.CURRENT_TAB==='annuaire'?buildQS():''),true);}
+  if(!fromRoute&&/^#\/(lieu|projet|date|media|artiste)\//.test(location.hash))setHash('/'+window.CURRENT_TAB+(window.CURRENT_TAB==='annuaire'?buildQS():''),true);}
 function getMonths(el){return [...document.querySelectorAll('#'+el+' .chip.on')].map(c=>+c.dataset.m);}
 async function saveLieu(id){
   const l=DB.lieux.find(x=>x.id===id);
@@ -1363,6 +1456,7 @@ async function routeFromHash(){
   if(TABS.includes(k)){closeModal(true);switchTab(k,true);if(k==='annuaire'){await applyQS(qs);renderList();}return;}
   if(k==='lieu'&&id){switchTab('annuaire',true);openLieu(id,true);return;}
   if(k==='projet'&&id){switchTab('projets',true);openProjet(id,true);return;}
+  if(k==='artiste'&&id){switchTab('projets',true);openArtiste(id,true);return;}
   if(k==='date'&&id){switchTab('dates',true);openDate(id,true);return;}
   if(k==='media'&&id){switchTab('medias',true);if(!DB.medias)await loadMedias();openMedia(id,true);return;}
   switchTab('annuaire',true);
@@ -1419,7 +1513,7 @@ function renderBillet(){
     const p=(DB.projList||[]).find(x=>x.id===d.projet_id);const lp=lastPointage(d);const ct=billetContact(d);
     const dt=daysBetween(today,d.date_spectacle);
     return `<tr><td class="row-strong">${d.date_spectacle}</td><td><span class="pill ${dt<=30?'a':'m'}">J-${dt}</span></td>
-      <td>${esc(p?p.nom:'—')}</td><td class="mini">${esc(lieuLabel(d))}</td>
+      <td>${p?projDot(p):''}${esc(p?p.nom:'—')}</td><td class="mini">${esc(lieuLabel(d))}</td>
       <td class="mini">${lp?lp.date_pointage+' ('+lp.billets_vendus+' billets)':'jamais pointé'}</td>
       <td class="mini">tous les ${freqFor(dt)} j</td>
       <td class="mini">${ct?esc((ct.prenom||'')+' '+(ct.nom||''))+(ct.email?'':' <span class="pill a">email manquant</span>'):'<span class="pill a">à renseigner (fiche lieu)</span>'}</td>
@@ -1500,7 +1594,7 @@ function genPdfProjet(pid){
   const dsPx=ds.filter(x=>+x.prix_cession>0);const ca=dsPx.reduce((s,x)=>s+ +x.prix_cession,0);const comm=dsPx.reduce((s,x)=>s+commOf(x),0);
   const bySais={};ds.forEach(x=>{const s=saisonOf(x.date_spectacle);bySais[s]=(bySais[s]||0)+1;});
   let body='';
-  if(secs.includes('infos'))body+=`<h2>${esc(p.nom)}</h2><p><b>Artiste(s) :</b> ${artNames(pid).replace(/⭐ /g,'★ ')||'—'}</p>${p.pitch?`<p>${esc(p.pitch)}</p>`:''}`;
+  if(secs.includes('infos'))body+=`<h2>${esc(p.nom)}</h2><p><b>Artiste(s) :</b> ${artNames(pid).replace(/⭐ /g,'★ ')||'—'}</p>${(p.sacem_programme||p.sacd_ref)?`<p>${p.sacem_programme?'<b>Programme SACEM :</b> '+esc(p.sacem_programme)+' ':''}${p.sacd_ref?'<b>Réf. SACD :</b> '+esc(p.sacd_ref):''}</p>`:''}${p.pitch?`<p>${esc(p.pitch)}</p>`:''}`;
   if(secs.includes('deal'))body+=`<h3>Deal</h3><p>Taux de commission : <b>${Math.round((d.taux_commission??0.12)*100)} %</b>${d.partage_resultat?' · Partage de résultat : '+Math.round(d.partage_resultat*100)+' %':''}${d.objectif_dates?' · Objectif : '+d.objectif_dates+' dates/an':''}${d.objectif_commission?' · Objectif commission : '+(+d.objectif_commission).toLocaleString('fr-FR')+' €':''}</p>${d.commentaire_objectif?'<p><i>'+esc(d.commentaire_objectif)+'</i></p>':''}`;
   if(secs.includes('lineup')&&lu.length)body+=`<h3>Line-up officiel</h3><table border="1" cellpadding="6" style="border-collapse:collapse"><tr><th>Musicien</th><th>Instrument</th><th>Cachet brut</th></tr>${lu.map(m=>`<tr><td>${esc((m.prenom||'')+' '+m.nom)}</td><td>${esc(m.instrument||'')}</td><td>${m.cachet?(+m.cachet).toLocaleString('fr-FR')+' €':'—'}</td></tr>`).join('')}<tr><td colspan="2"><b>Total</b></td><td><b>${lu.reduce((s,m)=>s+(+m.cachet||0),0).toLocaleString('fr-FR')} €</b></td></tr></table>`;
   if(secs.includes('stats'))body+=`<h3>Statistiques</h3><p>Dates : <b>${ds.length}</b> · CA Cessions : <b>${ca.toLocaleString('fr-FR')} €</b> · CA moyen/représentation : <b>${dsPx.length?Math.round(ca/dsPx.length).toLocaleString('fr-FR'):0} €</b> · Commissions : <b>${comm.toLocaleString('fr-FR')} €</b></p>`;
@@ -1521,6 +1615,10 @@ function renderRenta(){
   const artId=+document.getElementById('rfArtiste').value||0;
   let projs=DB.projList;
   if(artId)projs=projs.filter(p=>(DB.projArt[p.id]||[]).some(x=>x.artiste_id===artId));
+  const artEl=document.getElementById('rentaArtistes');
+  if(artEl){const arts=(DB.artistes||[]).map(a=>({a,s:statsFor(projetsOf(a.id).map(p=>p.id)),np:projetsOf(a.id).length})).filter(x=>x.s.n>0).sort((x,y)=>y.s.commReal-x.s.commReal);
+    artEl.innerHTML=`<div class="card-h"><h3>🎤 Vision consolidée par artiste</h3><span class="mini">tous projets confondus · clique pour la fiche artiste</span></div><div class="tbl-wrap"><table><thead><tr><th>Artiste</th><th>Projets</th><th>Dates</th><th>Confirmées / réalisées</th><th>CA cession réalisé</th><th>Commission réalisée</th><th>Prévisionnel (options)</th><th>Cession moyenne</th></tr></thead><tbody>
+    ${arts.map(x=>`<tr class="clik" onclick="openArtiste(${x.a.id})"><td class="row-strong"><a class="lnk" href="#/artiste/${x.a.id}" onclick="event.stopPropagation()">${esc(x.a.nom)}</a></td><td>${projetsOf(x.a.id).map(p=>projDot(p)).join('')} ${x.np}</td><td>${x.s.n}</td><td>${x.s.real}</td><td>${x.s.caReal.toLocaleString('fr-FR')} €</td><td class="row-strong">${x.s.commReal.toLocaleString('fr-FR')} €</td><td>${x.s.commOpt.toLocaleString('fr-FR')} €</td><td>${x.s.caMoy.toLocaleString('fr-FR')} €</td></tr>`).join('')}</tbody></table></div>`;}
   const stats=projs.map(p=>{
     const ds=(DB.datesAll||[]).filter(d=>d.projet_id===p.id&&d.statut!=='annulee');
     const dsPx=ds.filter(d=>+d.prix_cession>0);
@@ -1533,7 +1631,7 @@ function renderRenta(){
   document.getElementById('rentaBody').innerHTML=stats.map((x,i)=>`
     <tr class="clik" onclick="openProjet(${x.p.id})">
       <td class="row-strong">${i+1}${i===0?' 🏆':''}</td>
-      <td class="row-strong">${esc(x.p.nom)}</td>
+      <td class="row-strong">${projDot(x.p)}${esc(x.p.nom)}</td>
       <td class="mini">${artNames(x.p.id)||'—'}</td>
       <td>${x.n}</td>
       <td class="row-strong">${x.ca.toLocaleString('fr-FR')} €</td>
@@ -1671,7 +1769,7 @@ function renderDates(){
     const lu=DB.dateLineup[d.id]||[];
     return `<tr class="clik" onclick="openDate(${d.id})">
       <td class="row-strong" style="white-space:nowrap"><a class="lnk" href="#/date/${d.id}" onclick="event.stopPropagation()">${d.date_spectacle}</a></td>
-      <td>${esc(p?p.nom:'—')}</td><td class="mini">${esc(lieuLabel(d))}</td>
+      <td>${p?projDot(p):''}${esc(p?p.nom:'—')}</td><td class="mini">${esc(lieuLabel(d))}</td>
       <td><span class="pill m">${saisonOf(d.date_spectacle)}</span></td>
       <td><span class="pill ${st[1]}">${st[0]}</span></td>
       <td class="mini">${esc(d.type_contrat||'cession')}</td>
@@ -1833,7 +1931,7 @@ async function loadProjets(){
   DB.artistes=ar.data;
   DB.docs={}; dc.data.forEach(d=>{(DB.docs[d.projet_id]=DB.docs[d.projet_id]||[]).push(d);});
   DB.datesCount={}; dt.data.forEach(d=>DB.datesCount[d.projet_id]=(DB.datesCount[d.projet_id]||0)+1);
-  renderProjets();
+  renderProjets(); renderArtistes();
   initSide();
   return true;
 }
@@ -1844,7 +1942,7 @@ function memberRow(m,id,all){
   const principals=all.filter(x=>(x.categorie||'artiste')===(m.categorie||'artiste')&&!x.remplacant_de&&x.id!==m.id);
   const tech=(m.categorie||'artiste')==='technicien';
   return `<details class="acc ${m.lead?'lead':''} ${m.remplacant_de?'rempl':''}" data-lid="${m.id}">
-    <summary>${m.remplacant_de?'<span class="mini">↳ remplaçant</span>':''}${m.lead?'<span class="badge-lead">★ LEAD</span>':''}<span>${esc(name)}</span>${m.instrument?`<span class="mini">— ${esc(m.instrument)}</span>`:''}${m.cachet?`<span class="mini">· ${(+m.cachet).toLocaleString('fr-FR')} € brut</span>`:''}
+    <summary><input type="checkbox" class="grp nodirty" data-email="${esc(m.email||'')}" data-tel="${esc(m.telephone||'')}" data-cat="${m.categorie||'artiste'}" onclick="event.stopPropagation()" title="Sélectionner pour un mail / appel de groupe">${m.remplacant_de?'<span class="mini">↳ remplaçant</span>':''}${m.lead?'<span class="badge-lead">★ LEAD</span>':''}<span>${esc(name)}</span>${m.instrument?`<span class="mini">— ${esc(m.instrument)}</span>`:''}${m.cachet?`<span class="mini">· ${(+m.cachet).toLocaleString('fr-FR')} € brut</span>`:''}
       <span style="flex:1"></span>${m.email?`<a href="mailto:${esc(m.email)}" onclick="event.stopPropagation()" title="${esc(m.email)}">✉️</a>`:''}${m.telephone?`<a href="tel:${esc(m.telephone.replace(/\s/g,''))}" onclick="event.stopPropagation()" title="${esc(m.telephone)}">📞</a>`:''}</summary>
     <div class="acc-b"><div class="fgrid3" style="gap:7px">
       <div><label class="fl">Prénom</label><input class="f lp" value="${esc(m.prenom||'')}"></div>
@@ -1875,7 +1973,7 @@ function renderProjets(){
   document.getElementById('projBody').innerHTML=(DB.projList||[]).map(p=>{
     const d=DB.deals[p.id]||{};const lu=DB.lineup[p.id]||[];const e=(DB.esthsAll||DB.esths).find(x=>x.id===p.esthetique_id);
     return `<tr class="clik" onclick="openProjet(${p.id})">
-      <td class="row-strong"><a class="lnk" href="#/projet/${p.id}" onclick="event.stopPropagation()">${esc(p.nom)}</a></td>
+      <td class="row-strong">${projDot(p)}<a class="lnk" href="#/projet/${p.id}" onclick="event.stopPropagation()">${esc(p.nom)}</a></td>
       <td class="mini">${artNames(p.id)||'—'}</td>
       <td>${e?`<span class="pill c">${esc(e.nom)}</span>`:'<span class="mini">à renseigner</span>'}</td>
       <td><span class="pill b">${Math.round((d.taux_commission??0.12)*100)} %</span></td>
@@ -1891,7 +1989,7 @@ async function openProjet(id,fromRoute){
   const notesP=await fetchNotes('projet',id);
   const d=DB.deals[id]||{};const lu=DB.lineup[id]||[];const iv=DB.interv[id]||[];const dc=DB.docs[id]||[];
   document.getElementById('modal').innerHTML=`
-  <div class="modal-h"><button class="btn sm" onclick="navProjet(${id},-1)" title="Projet précédent">←</button><button class="btn sm" onclick="navProjet(${id},1)" title="Projet suivant">→</button><span style="font-size:20px">🎷</span><div><h3>${esc(p.nom)}</h3><span class="mini">${artNames(id)||'—'} · ${DB.datesCount[id]||0} date(s)</span></div>
+  <div class="modal-h"><button class="btn sm" onclick="navProjet(${id},-1)" title="Projet précédent">←</button><button class="btn sm" onclick="navProjet(${id},1)" title="Projet suivant">→</button><span style="width:12px;height:34px;border-radius:4px;background:${projColor(p)};display:inline-block"></span><div><h3>${esc(p.nom)}</h3><span class="mini">${artNames(id)||'—'} · ${DB.datesCount[id]||0} date(s)</span></div>
     <select class="f" style="width:150px" onchange="if(this.value)openProjet(+this.value)" title="Changer de projet">${DB.projList.filter(x=>x.actif!==false).map(x=>`<option value="${x.id}" ${x.id===id?'selected':''}>${esc(x.nom)}</option>`).join('')}</select>
     <button class="btn sm" onclick="exportPdfProjet(${id})">📄 PDF</button><button class="btn sm primary" onclick="saveProjet(${id})">💾 Enregistrer</button><button class="btn sm" onclick="closeModal()">✕</button></div>
   <div class="modal-b">
@@ -1901,10 +1999,15 @@ async function openProjet(id,fromRoute){
       <div><label class="fl">Esthétique</label><select class="f" id="pEsth"><option value="">—</option>${DB.esths.map(e=>`<option value="${e.id}" ${e.id===p.esthetique_id?'selected':''}>${esc(e.nom)}</option>`).join('')}</select></div>
       <div><label class="fl">Actif</label><select class="f" id="pActif"><option value="true" ${p.actif?'selected':''}>Oui</option><option value="false" ${!p.actif?'selected':''}>Non</option></select></div>
     </div>
-    <div class="sec-t">🎯 Artiste(s) rattaché(s) au projet <span class="mini" style="text-transform:none;letter-spacing:0">(fiche artiste, rentabilité par artiste · clique pour lier/délier)</span></div>
-    <div>${(DB.artistes||[]).map(a=>{const link=(DB.projArt[id]||[]).find(x=>x.artiste_id===a.id);return `<span class="chip partiste ${link?'on':''}" data-a="${a.id}" onclick="this.classList.toggle('on')">${esc(a.nom)}</span>`;}).join('')}</div>
+    <details class="acc" style="margin-top:10px"><summary>🎯 Artistes rattachés (${(DB.projArt[id]||[]).length}) <span class="mini">— ${artNames(id)||'aucun'} · clique pour lier / délier</span></summary><div class="acc-b">
+    <div style="margin-top:6px">${(DB.artistes||[]).map(a=>{const link=(DB.projArt[id]||[]).find(x=>x.artiste_id===a.id);return `<span class="chip partiste ${link?'on':''}" data-a="${a.id}" onclick="this.classList.toggle('on')">${esc(a.nom)}</span>`;}).join('')}</div>
     <div class="flex center" style="gap:8px;margin-top:7px"><label class="fl" style="margin:0">Artiste principal :</label><select class="f" id="pLead" style="width:200px">${(DB.artistes||[]).map(a=>{const link=(DB.projArt[id]||[]).find(x=>x.artiste_id===a.id);return `<option value="${a.id}" ${link&&link.lead?'selected':''}>${esc(a.nom)}</option>`;}).join('')}</select>
-    <input class="f" id="pNewArtiste" placeholder="Nouvel artiste…" style="width:180px"><button class="btn sm" onclick="addArtiste(${id})">＋ Artiste</button></div>
+    <input class="f" id="pNewArtiste" placeholder="Nouvel artiste…" style="width:180px"><button class="btn sm" onclick="addArtiste(${id})">＋ Artiste</button></div></div></details>
+    <div class="fgrid3" style="margin-top:10px">
+      <div><label class="fl">Numéro de programme SACEM</label><input class="f" id="pSacem" value="${esc(p.sacem_programme||'')}"></div>
+      <div><label class="fl">Référence SACD</label><input class="f" id="pSacd" value="${esc(p.sacd_ref||'')}"></div>
+      <div><label class="fl">Couleur du projet</label><div class="flex center" style="gap:8px"><input type="color" id="pCouleur" value="${projColor(p)}" style="width:44px;height:32px;border:none;background:none;cursor:pointer"><span class="mini">reprise partout (colonne, fiches, dates)</span></div></div>
+    </div>
     <label class="fl" style="margin-top:12px">Pitch commercial (modifiable avant chaque envoi)</label>
     <textarea class="f" id="pPitch" style="height:56px">${esc(p.pitch||'')}</textarea>
     ${socialsHtml(p,'pS_')}
@@ -1917,6 +2020,10 @@ async function openProjet(id,fromRoute){
     </div>
     <label class="fl" style="margin-top:8px">Commentaire / stratégie <span class="mini">(contextualise les chiffres ci-dessus)</span></label>
     <textarea class="f" id="dCom" style="height:50px" placeholder="Ex. : objectif volontairement élevé car développement international prévu au second semestre…">${esc(d.commentaire_objectif||'')}</textarea>
+    <div class="card nodirty" style="padding:8px 11px;margin-top:10px;background:var(--surface-2)"><div class="flex center wrap-f" style="gap:7px">
+      <b style="font-size:12.5px">👥 Contacter l'équipe :</b><span class="mini">cocher des membres, ou</span>
+      <button class="btn sm" onclick="grpSelect('artiste')">tous les artistes</button><button class="btn sm" onclick="grpSelect('technicien')">tous les techniciens</button><button class="btn sm" onclick="grpSelect('equipe')">toute l'équipe (+ intervenants)</button><button class="btn sm" onclick="grpSelect('')">aucun</button>
+      <span style="flex:1"></span><button class="btn sm primary" onclick="grpMail()">✉️ Mail au groupe</button><button class="btn sm" onclick="grpTel()">📞 Numéros du groupe</button></div></div>
     <div id="pLineup">${lineupSections(id,lu)}</div>
     <div class="card nodirty" style="padding:10px;margin-top:8px;background:var(--surface-2)">
       <div class="flex center wrap-f" style="gap:7px">
@@ -1926,11 +2033,13 @@ async function openProjet(id,fromRoute){
         <button class="btn sm" onclick="addMusicien(${id})">＋ Ajouter</button></div></div>
     <p class="mini" style="margin-top:8px">Total cachets bruts : <b id="pTotal">${totCachets(id).toLocaleString('fr-FR')} €</b> — reporté automatiquement sur chaque nouvelle date (modifiable date par date sans toucher au line-up officiel).</p>
     <div class="sec-t">👥 Intervenants — rôles libres · case « copie mails de confirmation »</div>
-    <div id="pInterv">${iv.map(i=>{const r=DB.roles.find(x=>x.id===i.role_id);return `<div class="flex center" style="gap:7px;margin-bottom:6px" data-iid="${i.id}">
+    <div id="pInterv">${iv.map(i=>{const r=DB.roles.find(x=>x.id===i.role_id);return `<div class="flex center" style="gap:7px;margin-bottom:6px" data-iid="${i.id}"><input type="checkbox" class="grp nodirty" data-email="${esc(i.email||'')}" data-tel="${esc(i.telephone||'')}" data-cat="equipe" title="Sélectionner pour un mail / appel de groupe">
       <select class="f ir" style="width:150px">${DB.roles.map(x=>`<option value="${x.id}" ${x.id===i.role_id?'selected':''}>${esc(x.nom)}</option>`).join('')}</select>
       <input class="f ip" value="${esc(i.prenom||'')}" placeholder="Prénom" style="width:100px">
       <input class="f in2" value="${esc(i.nom)}" placeholder="Nom" style="width:130px">
       <input class="f ie" value="${esc(i.email||'')}" placeholder="Email" style="flex:1">
+      <input class="f it" value="${esc(i.telephone||'')}" placeholder="Tél" style="width:110px">
+      ${i.email?`<a href="mailto:${esc(i.email)}" title="Écrire">✉️</a>`:''}${i.telephone?`<a href="tel:${esc(i.telephone.replace(/\s/g,''))}" title="Appeler">📞</a>`:''}
       <label class="mini" style="white-space:nowrap"><input type="checkbox" class="icc" ${i.copie_confirmation?'checked':''}> copie ✉️</label>
       <button class="btn sm danger" onclick="delInterv(${i.id},${id},this)">✕</button></div>`;}).join('')}</div>
     <div class="flex center" style="gap:7px">
@@ -1956,7 +2065,7 @@ async function openProjet(id,fromRoute){
 function updTotal(pid){let t=0;document.querySelectorAll('#pLineup [data-lid]').forEach(d=>{if(!d.querySelector('.lr').value)t+=+d.querySelector('.lc').value||0;});document.getElementById('pTotal').textContent=t.toLocaleString('fr-FR')+' €';}
 async function saveProjet(id){
   const g=x=>document.getElementById(x).value.trim()||null;
-  const {error:e1}=await sb.from('projets').update({...socialsRead('pS_'),nom:g('pNom'),esthetique_id:+document.getElementById('pEsth').value||null,
+  const {error:e1}=await sb.from('projets').update({...socialsRead('pS_'),sacem_programme:g('pSacem'),sacd_ref:g('pSacd'),couleur:document.getElementById('pCouleur').value,nom:g('pNom'),esthetique_id:+document.getElementById('pEsth').value||null,
     actif:document.getElementById('pActif').value==='true',pitch:g('pPitch'),analyse_strategique:g('pAnalyse'),
     interets_strategiques:[...document.querySelectorAll('.chip.intstrat.on')].map(c=>c.dataset.i)}).eq('id',id);
   const {error:e2}=await sb.from('deals').upsert({projet_id:id,taux_commission:(+document.getElementById('dTaux').value||12)/100,
@@ -1970,7 +2079,7 @@ async function saveProjet(id){
   }
   for(const div of document.querySelectorAll('#pInterv [data-iid]')){
     await sb.from('projet_intervenants').update({role_id:+div.querySelector('.ir').value,prenom:div.querySelector('.ip').value.trim()||null,
-      nom:div.querySelector('.in2').value.trim()||'—',email:div.querySelector('.ie').value.trim()||null,
+      nom:div.querySelector('.in2').value.trim()||'—',email:div.querySelector('.ie').value.trim()||null,telephone:div.querySelector('.it').value.trim()||null,
       copie_confirmation:div.querySelector('.icc').checked}).eq('id',+div.dataset.iid);
   }
   // artistes du projet
