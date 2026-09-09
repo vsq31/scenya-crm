@@ -153,7 +153,7 @@
 <div id="appView" style="display:none">
   <div class="topbar">
     <div class="logo">S</div>
-    <div><h1>Scenya CRM</h1><div class="sub"><span onclick="openChangelog()" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px" title="Historique des versions">v2.5</span> · agence de booking</div></div>
+    <div><h1>Scenya CRM</h1><div class="sub"><span onclick="openChangelog()" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px" title="Historique des versions">v2.6</span> · agence de booking</div></div>
     <div class="tabs">
       <a class="tab on" data-v="annuaire" href="#/annuaire" style="text-decoration:none">🏛️ Annuaire</a>
       <a class="tab" data-v="pilotage" href="#/pilotage" style="text-decoration:none">📊 Pilotage</a>
@@ -162,6 +162,7 @@
       <a class="tab" data-v="billet" href="#/billet" style="text-decoration:none">🎟️ Billetterie</a>
       <a class="tab" data-v="renta" href="#/renta" style="text-decoration:none">📈 Rentabilité</a>
       <a class="tab" data-v="medias" href="#/medias" style="text-decoration:none">📻 Médias</a>
+      <a class="tab" data-v="partenaires" href="#/partenaires" style="text-decoration:none">🤝 Partenaires</a>
       <a class="tab" data-v="rappro" href="#/rappro" style="text-decoration:none">🔗 Rapprochement dates</a>
     </div>
     <div style="flex:1"></div>
@@ -288,15 +289,27 @@
     <div id="v-medias" style="display:none">
       <div class="card"><div class="flex wrap-f" style="gap:12px;align-items:flex-end">
         <div><label class="fl">Recherche</label><input class="f" id="mdTxt" placeholder="Nom / ville…" oninput="renderMedias()" style="width:220px"></div>
-        <div><label class="fl">Catégorie</label><select class="f" id="mdCat" onchange="renderMedias()"><option value="">Toutes</option><option value="radio">Radios</option><option value="presse">Presse</option></select></div>
+        <div><label class="fl">Catégorie</label><select class="f" id="mdCat" onchange="renderMedias()"><option value="">Toutes</option><option value="TÉLÉ">📺 Télé</option><option value="RADIO">📻 Radio</option><option value="PRESSE ÉCRITE">📰 Presse écrite</option><option value="RÉSEAUX SOCIAUX">📱 Réseaux sociaux</option><option value="WEB">🌐 Web</option><option value="AGENCE DE PRESSE">🗞️ Agence de presse</option><option value="AUTRES">📣 Autres</option></select></div>
         <div><label class="fl">Pays</label><select class="f" id="mdPays" onchange="fillMediaRegions();renderMedias()"><option value="">Tous</option></select></div>
         <div><label class="fl">Région</label><select class="f" id="mdReg" onchange="renderMedias()"><option value="">Toutes</option></select></div>
         <div><label class="fl">Langue</label><select class="f" id="mdLang" onchange="renderMedias()"><option value="">Toutes</option></select></div>
         <div style="flex:1"></div>
-        <div><button class="btn sm" onclick="exportMediasCSV()">⬇️ Export CSV (sélection)</button></div>
+        <div class="flex" style="gap:6px"><button class="btn sm primary" onclick="openNewMedia()">＋ Média</button><button class="btn sm" onclick="exportMediasCSV()">⬇️ Export CSV (sélection)</button></div>
       </div></div>
       <div class="card"><div class="flex between center"><b id="mdCount">—</b><span class="mini">contacts promo (radios & presse) · source Prospectacles 28.08.2026</span></div>
         <div class="tbl-wrap"><table><thead><tr><th>Média</th><th>Catégorie</th><th>Ville / région</th><th>Email</th><th>Téléphone</th><th>Langue · fréquence</th></tr></thead><tbody id="mdBody"></tbody></table></div></div>
+    </div>
+    <div id="v-partenaires" style="display:none">
+      <div class="card"><div class="flex wrap-f" style="gap:12px;align-items:flex-end">
+        <div><label class="fl">Recherche</label><input class="f" id="ptTxt" placeholder="Nom / organisme / contact…" oninput="renderPartenaires()" style="width:220px"></div>
+        <div><label class="fl">Catégorie</label><select class="f" id="ptCat" onchange="renderPartenaires()"><option value="">Toutes</option><option value="ENTREPRISE">🏢 Entreprise (mécénat / sponsor)</option><option value="SUBVENTION">🏛️ Subvention</option><option value="AUTRES">Autres</option></select></div>
+        <div><label class="fl">Statut</label><select class="f" id="ptStat" onchange="renderPartenaires()"><option value="">Tous</option><option value="a_contacter">À contacter</option><option value="en_cours">En cours</option><option value="accorde">Accordé</option><option value="refuse">Refusé</option></select></div>
+        <div><label class="fl">Projet concerné</label><select class="f" id="ptProj" onchange="renderPartenaires()" style="width:180px"><option value="">Tous</option></select></div>
+        <div style="flex:1"></div>
+        <div class="flex" style="gap:6px"><button class="btn sm primary" onclick="openNewPartenaire()">＋ Partenaire</button><button class="btn sm" onclick="exportPartenairesCSV()">⬇️ Export CSV</button></div>
+      </div></div>
+      <div class="card"><div class="flex between center"><b id="ptCount">—</b><span class="mini">mécénat, sponsors, subventions (SACEM, ADAMI, DRAC…) · clique une ligne pour la fiche</span></div>
+        <div class="tbl-wrap"><table><thead><tr><th>Partenaire</th><th>Catégorie</th><th>Contact</th><th>Projets</th><th>Montant</th><th>Statut</th><th>Échéance</th></tr></thead><tbody id="ptBody"></tbody></table></div></div>
     </div>
     <div id="v-rappro" style="display:none">
       <div class="card"><b>🔗 Rapprochement des dates orphelines</b>
@@ -537,7 +550,7 @@ async function openLieu(id,fromRoute){
     <div class="sec-t">🎪 Lieu / festival / événement</div>
     <div class="fgrid3">
       <div><label class="fl">Nom</label><input class="f" id="mNom" value="${esc(l.nom)}"></div>
-      <div><label class="fl">Typologies <span class="mini">(plusieurs possibles)</span></label><div>${DB.types.map(t=>`<span class="chip typ ${((l.types&&l.types.length)?l.types:[l.type_id]).includes(t.id)?'on':''}" data-t="${t.id}" onclick="this.classList.toggle('on')">${esc(t.nom)}</span>`).join('')}</div></div>
+      <div style="grid-column:span 2"><label class="fl">Typologies <span class="mini">(plusieurs possibles — tape pour rechercher)</span></label>${(window.MS_OPTS.mTypes=DB.types.slice().sort((a,b)=>(a.ordre||9)-(b.ordre||9)||a.nom.localeCompare(b.nom)),msHtml('mTypes',window.MS_OPTS.mTypes,(l.types&&l.types.length)?l.types:(l.type_id?[l.type_id]:[]),'Rechercher une typologie (Festival, Théâtre, Mairie…)'))}</div>
       <div><label class="fl">Esthétiques</label><div>${DB.esths.map(e=>`<span class="chip esth ${(l.esthetiques||[]).includes(e.id)?'on':''}" data-e="${e.id}" onclick="this.classList.toggle('on')">${esc(e.nom)}</span>`).join('')}</div></div>
     </div>
     <div class="fgrid3">
@@ -795,30 +808,59 @@ function renderMedias(){
   const rows=filteredMedias(), MAXR=300;
   document.getElementById('mdCount').textContent=rows.length+' média(s)'+(rows.length>MAXR?' — affichage des '+MAXR+' premiers':'');
   document.getElementById('mdBody').innerHTML=rows.slice(0,MAXR).map(m=>`<tr class="clik" onclick="openMedia(${m.id})">
-    <td class="row-strong"><a class="lnk" href="#/media/${m.id}" onclick="event.stopPropagation()">${esc(m.nom)}</a></td><td><span class="pill ${m.categorie==='radio'?'c':'b'}">${m.categorie==='radio'?'📻 Radio':'📰 Presse'}</span></td>
+    <td class="row-strong"><a class="lnk" href="#/media/${m.id}" onclick="event.stopPropagation()">${esc(m.nom)}</a></td><td><span class="pill c">${MEDIA_ICON[m.categorie]||'📣'} ${esc(m.categorie||'—')}</span></td>
     <td>${esc(m.ville||'—')} <span class="mini">${esc(m.region||m.pays||'')}</span></td>
     <td class="mini">${m.email?`<a href="mailto:${esc(m.email)}">${esc(m.email)}</a>`:'—'}</td><td class="mini">${esc(m.telephone||'—')}</td>
     <td class="mini">${esc([m.langue,m.frequence].filter(Boolean).join(' · ')||'—')}</td></tr>`).join('');
 }
 async function openMedia(id,fromRoute){
   const m=(DB.medias||[]).find(x=>x.id===id); if(!m){toast('Média introuvable',true);return;}
-  if(!fromRoute&&window.DIRTY&&!(await guardDirty()))return; window.DIRTY=false; window.SAVE_FN=null;
+  if(!fromRoute&&window.DIRTY&&!(await guardDirty()))return; window.DIRTY=false; window.SAVE_FN=()=>saveMedia(id);
   if(!fromRoute)setHash('/media/'+id);
   const notesM=await fetchNotes('media',id);
-  const row=(k,v,link)=>v?`<div><label class="fl">${k}</label><div style="font-size:13px">${link?`<a href="${esc(link)}" target="_blank">${esc(v)}</a>`:esc(v)}</div></div>`:'';
+  const f=(k,lab,link)=>`<div><label class="fl">${lab}${m[k]&&link?` <a href="${esc(link(m[k]))}" target="_blank" class="mini" style="text-transform:none">↗</a>`:''}</label><input class="f" id="md_${k}" value="${esc(m[k]||'')}"></div>`;
   document.getElementById('modal').innerHTML=`
-  <div class="modal-h"><span style="font-size:20px">${m.categorie==='radio'?'📻':'📰'}</span><div><h3>${esc(m.nom)}</h3><span class="mini">${esc([m.categorie==='radio'?'Radio':'Presse',m.ville,m.region,m.pays].filter(Boolean).join(' · '))}</span></div><button class="btn sm" onclick="closeModal()">✕</button></div>
+  <div class="modal-h"><span style="font-size:20px">${MEDIA_ICON[m.categorie]||'📣'}</span><div><h3>${esc(m.nom)}</h3><span class="mini">${esc([m.categorie,m.ville,m.region,m.pays].filter(Boolean).join(' · '))}</span></div>
+    <button class="btn sm primary" onclick="saveMedia(${id})">💾 Enregistrer</button><button class="btn sm danger" onclick="delMedia(${id})">🗑️</button><button class="btn sm" onclick="closeModal()">✕</button></div>
   <div class="modal-b">
     <div class="fgrid3">
-      ${row('Contact',m.prenom)}${row('Email',m.email,m.email?'mailto:'+m.email:null)}${row('Téléphone',m.telephone)}
-      ${row('Site',m.site,m.site?(m.site.startsWith('http')?m.site:'https://'+m.site):null)}${row('Facebook',m.facebook,m.facebook?(m.facebook.startsWith('http')?m.facebook:'https://'+m.facebook):null)}${row('Stream',m.stream,m.stream?(m.stream.startsWith('http')?m.stream:'https://'+m.stream):null)}
-      ${row('Adresse',[m.adresse,m.cp,m.ville].filter(Boolean).join(', '))}${row('Langue',m.langue)}${row('Fréquence',m.frequence)}
-      ${row('Type',(m.types||'').replace(/\s*\|\s*/g,' · '))}${row('Sous-type',(m.sous_types||'').replace(/\s*\|\s*/g,' · '))}${row('Publics',(m.publics||'').replace(/\s*\|\s*/g,' · '))}${row('Propriétaire',m.proprietaire)}
+      <div><label class="fl">Nom</label><input class="f" id="md_nom" value="${esc(m.nom||'')}"></div>
+      <div><label class="fl">Catégorie</label><select class="f" id="md_categorie">${MEDIA_CATS.map(c=>`<option ${c===m.categorie?'selected':''}>${c}</option>`).join('')}</select></div>
+      ${f('prenom','Contact (nom)')}
+      ${f('email','Email',v=>'mailto:'+v)}${f('telephone','Téléphone')}${f('site','Site',absUrl)}
+      ${f('facebook','Facebook',absUrl)}${f('adresse','Adresse')}${f('cp','CP')}${f('ville','Ville')}${f('region','Région')}${f('pays','Pays')}
+      ${f('langue','Langue')}${f('frequence','Fréquence')}${f('stream','Stream',absUrl)}
     </div>
-    ${m.a_propos?`<p style="font-size:13px;line-height:1.55;margin:10px 0 0">${esc(m.a_propos)}</p>`:''}
+    <label class="fl" style="margin-top:8px">À propos</label><textarea class="f" id="md_a_propos" style="height:56px">${esc(m.a_propos||'')}</textarea>
+    <p class="mini" style="margin-top:6px">${esc([m.types,m.sous_types,m.publics,m.proprietaire].filter(Boolean).join(' · ').replace(/\s*\|\s*/g,' · '))}</p>
     ${notesHtml('media',id,notesM)}
   </div>`;
   document.getElementById('overlay').classList.add('open');
+}
+async function saveMedia(id){
+  const g=k=>{const el=document.getElementById('md_'+k);return el?(el.value.trim()||null):undefined;};
+  const row={};['nom','categorie','prenom','email','telephone','site','facebook','adresse','cp','ville','region','pays','langue','frequence','stream','a_propos'].forEach(k=>{const v=g(k);if(v!==undefined)row[k]=v;});
+  if(!row.nom){toast('Nom requis',true);return;}
+  const {error}=await sb.from('medias').update(row).eq('id',id); if(error){toast(error.message,true);return;}
+  window.DIRTY=false;toast('✓ Modifications enregistrées');await loadMedias();await openMedia(id,true);
+}
+async function delMedia(id){if(!confirm('Supprimer ce média ?'))return;await sb.from('medias').delete().eq('id',id);toast('Média supprimé');closeModal(true);await loadMedias();}
+function openNewMedia(){
+  document.getElementById('modal').innerHTML=`<div class="modal-h"><span style="font-size:20px">📣</span><h3>Ajouter un média</h3><button class="btn sm" onclick="closeModal()">✕</button></div>
+  <div class="modal-b"><div class="fgrid3">
+    <div><label class="fl">Nom *</label><input class="f" id="nmd_nom"></div>
+    <div><label class="fl">Catégorie</label><select class="f" id="nmd_cat">${MEDIA_CATS.map(c=>`<option>${c}</option>`).join('')}</select></div>
+    <div><label class="fl">Contact</label><input class="f" id="nmd_prenom"></div>
+    <div><label class="fl">Email</label><input class="f" id="nmd_email"></div><div><label class="fl">Téléphone</label><input class="f" id="nmd_tel"></div><div><label class="fl">Site</label><input class="f" id="nmd_site"></div>
+    <div><label class="fl">Ville</label><input class="f" id="nmd_ville"></div><div><label class="fl">Région</label><input class="f" id="nmd_region"></div><div><label class="fl">Pays</label><input class="f" id="nmd_pays" value="France"></div>
+  </div><button class="btn primary" style="margin-top:10px" onclick="createMedia()">💾 Créer</button></div>`;
+  document.getElementById('overlay').classList.add('open');
+}
+async function createMedia(){
+  const g=k=>document.getElementById('nmd_'+k).value.trim()||null; if(!g('nom')){toast('Nom requis',true);return;}
+  const {data,error}=await sb.from('medias').insert({nom:g('nom'),categorie:g('cat'),prenom:g('prenom'),email:g('email'),telephone:g('tel'),site:g('site'),ville:g('ville'),region:g('region'),pays:g('pays')}).select().single();
+  if(error){toast(error.message,true);return;}
+  toast('✓ Média créé');await loadMedias();openMedia(data.id);
 }
 function exportMediasCSV(){
   const rows=filteredMedias();
@@ -827,6 +869,34 @@ function exportMediasCSV(){
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+csv],{type:'text/csv'}));a.download='medias_scenya.csv';a.click();
   toast('⬇️ '+rows.length+' média(s) exporté(s)');
 }
+
+/* ===== LOT N : MULTI-SÉLECTION AVEC RECHERCHE ===== */
+function msHtml(id,options,selected,ph){
+  const sel=new Set((selected||[]).map(String));
+  const fams=[...new Set(options.map(o=>o.famille||'Autres'))];
+  return `<div class="ms nodirty" id="${id}" data-selected="${esc(JSON.stringify([...sel]))}">
+    <div class="flex wrap-f ms-chips" style="gap:5px;margin-bottom:5px">${options.filter(o=>sel.has(String(o.id))).map(o=>`<span class="chip on" data-id="${o.id}">${esc(o.nom)} <b onclick="msToggle('${id}','${o.id}');event.stopPropagation()" style="cursor:pointer;margin-left:3px">×</b></span>`).join('')||'<span class="mini">Aucune sélection</span>'}</div>
+    <input class="f" placeholder="${esc(ph||'Rechercher et cocher…')}" oninput="msFilter('${id}',this.value)" onfocus="document.querySelector('#${id} .ms-list').style.display='block'" style="width:100%">
+    <div class="ms-list card" style="display:none;max-height:230px;overflow:auto;padding:6px 10px;margin-top:4px;position:relative;z-index:5">
+      ${fams.map(f=>`<div class="ms-fam"><div class="mini" style="font-weight:800;margin:6px 0 3px;text-transform:uppercase;letter-spacing:.5px">${esc(f)}</div>
+      ${options.filter(o=>(o.famille||'Autres')===f).map(o=>`<label class="ms-opt" data-id="${o.id}" data-txt="${esc(o.nom.toLowerCase())}" style="display:flex;align-items:center;gap:7px;padding:3px 0;font-size:13px;cursor:pointer"><input type="checkbox" ${sel.has(String(o.id))?'checked':''} onchange="msToggle('${id}','${o.id}')">${esc(o.nom)}</label>`).join('')}</div>`).join('')}
+      <div style="text-align:right;margin-top:6px"><button class="btn sm" onclick="document.querySelector('#${id} .ms-list').style.display='none'">Fermer</button></div>
+    </div></div>`;
+}
+function msSelected(id){const el=document.getElementById(id);return el?JSON.parse(el.dataset.selected||'[]'):[];}
+function msToggle(id,val){
+  const el=document.getElementById(id);let sel=JSON.parse(el.dataset.selected||'[]');const s=String(val);
+  sel=sel.includes(s)?sel.filter(x=>x!==s):sel.concat([s]);el.dataset.selected=JSON.stringify(sel);window.DIRTY=true;
+  const opts=window.MS_OPTS[id]||[];
+  el.querySelector('.ms-chips').innerHTML=opts.filter(o=>sel.includes(String(o.id))).map(o=>`<span class="chip on" data-id="${o.id}">${esc(o.nom)} <b onclick="msToggle('${id}','${o.id}');event.stopPropagation()" style="cursor:pointer;margin-left:3px">×</b></span>`).join('')||'<span class="mini">Aucune sélection</span>';
+  el.querySelectorAll('.ms-opt').forEach(lab=>{lab.querySelector('input').checked=sel.includes(String(lab.dataset.id));});
+}
+function msFilter(id,q){q=(q||'').toLowerCase();const el=document.getElementById(id);el.querySelector('.ms-list').style.display='block';el.querySelectorAll('.ms-opt').forEach(o=>o.style.display=!q||o.dataset.txt.includes(q)?'flex':'none');el.querySelectorAll('.ms-fam').forEach(f=>f.style.display=[...f.querySelectorAll('.ms-opt')].some(o=>o.style.display!=='none')?'block':'none');}
+window.MS_OPTS={};
+const MEDIA_CATS=['TÉLÉ','RADIO','PRESSE ÉCRITE','RÉSEAUX SOCIAUX','WEB','AGENCE DE PRESSE','AUTRES'];
+const MEDIA_ICON={'TÉLÉ':'📺','RADIO':'📻','PRESSE ÉCRITE':'📰','RÉSEAUX SOCIAUX':'📱','WEB':'🌐','AGENCE DE PRESSE':'🗞️','AUTRES':'📣'};
+const PART_CATS=['ENTREPRISE','SUBVENTION','AUTRES'];
+const PART_ST={a_contacter:['À contacter','m'],en_cours:['En cours','a'],accorde:['Accordé','g'],refuse:['Refusé','r']};
 
 /* ===== LOT L : MAIL / APPEL DE GROUPE ===== */
 function grpSelect(cat){document.querySelectorAll('#modal .grp').forEach(c=>{c.checked=cat===''?false:cat==='equipe'?true:c.dataset.cat===cat;});}
@@ -1208,9 +1278,91 @@ async function renderTaches(){
 }
 async function relanceFaiteTache(id){await sb.from('interactions').update({relance_faite:true}).eq('id',id);toast('✓ Fait');await reloadNegos();renderTaches();}
 
+/* ===== PARTENAIRES : mécénat / sponsors / subventions (v2.6) ===== */
+async function loadPartenaires(){
+  const {data,error}=await fetchAll('partenaires','*','nom'); if(error){toast(error.message,true);return;}
+  DB.partenaires=data;
+  const sel=document.getElementById('ptProj');const v=sel.value;sel.innerHTML='<option value="">Tous</option>'+(DB.projList||[]).map(p=>`<option value="${p.id}" ${v==p.id?'selected':''}>${esc(p.nom)}</option>`).join('');
+  renderPartenaires();
+}
+function filteredPartenaires(){
+  const q=(document.getElementById('ptTxt').value||'').toLowerCase(),cat=document.getElementById('ptCat').value,st=document.getElementById('ptStat').value,pj=+document.getElementById('ptProj').value||0;
+  return (DB.partenaires||[]).filter(p=>(!q||((p.nom||'')+' '+(p.organisme||'')+' '+(p.contact_nom||'')+' '+(p.notes||'')).toLowerCase().includes(q))&&(!cat||p.categorie===cat)&&(!st||p.statut===st)&&(!pj||(p.projets||[]).includes(pj)));
+}
+function partPill(st){const s=PART_ST[st]||PART_ST.a_contacter;return `<span class="pill ${s[1]}">${s[0]}</span>`;}
+function renderPartenaires(){
+  const rows=filteredPartenaires();document.getElementById('ptCount').textContent=rows.length+' partenaire(s)';
+  document.getElementById('ptBody').innerHTML=rows.map(p=>`<tr class="clik" onclick="openPartenaire(${p.id})">
+    <td class="row-strong"><a class="lnk" href="#/partenaire/${p.id}" onclick="event.stopPropagation()">${esc(p.nom)}</a>${p.organisme?` <span class="mini">${esc(p.organisme)}</span>`:''}</td>
+    <td><span class="pill ${p.categorie==='SUBVENTION'?'c':p.categorie==='ENTREPRISE'?'b':'m'}">${p.categorie==='SUBVENTION'?'🏛️':p.categorie==='ENTREPRISE'?'🏢':'•'} ${esc(p.categorie)}</span></td>
+    <td class="mini">${esc(p.contact_nom||'—')}${p.email?` <a href="mailto:${esc(p.email)}" onclick="event.stopPropagation()">✉️</a>`:''}${p.telephone?` <a href="tel:${esc(p.telephone.replace(/\s/g,''))}" onclick="event.stopPropagation()">📞</a>`:''}</td>
+    <td>${(p.projets||[]).map(id=>{const pr=(DB.projList||[]).find(x=>x.id===id);return pr?projDot(pr)+'<span class="mini">'+esc(pr.nom)+'</span> ':'';}).join('')||'<span class="mini">—</span>'}</td>
+    <td class="mini">${p.montant?(+p.montant).toLocaleString('fr-FR')+' €':'—'}</td><td>${partPill(p.statut)}</td><td class="mini">${fmtD(p.echeance)}</td></tr>`).join('')||'<tr><td colspan="7" class="mini">Aucun partenaire — utilise « ＋ Partenaire ».</td></tr>';
+}
+async function openPartenaire(id,fromRoute){
+  const p=(DB.partenaires||[]).find(x=>x.id===id); if(!p){toast('Partenaire introuvable',true);return;}
+  if(!fromRoute&&window.DIRTY&&!(await guardDirty()))return; window.DIRTY=false; window.SAVE_FN=()=>savePartenaire(id);
+  if(!fromRoute)setHash('/partenaire/'+id);
+  const notesP=await fetchNotes('partenaire',id);
+  const f=(k,lab,type)=>`<div><label class="fl">${lab}</label><input class="f" id="pt_${k}" type="${type||'text'}" value="${esc(p[k]??'')}"></div>`;
+  window.MS_OPTS.pt_projets=(DB.projList||[]).map(x=>({id:x.id,nom:x.nom,famille:x.actif===false?'Projets inactifs':'Projets actifs'}));
+  document.getElementById('modal').innerHTML=`
+  <div class="modal-h"><span style="font-size:20px">${p.categorie==='SUBVENTION'?'🏛️':'🏢'}</span><div><h3>${esc(p.nom)}</h3><span class="mini">${esc(p.categorie)}${p.organisme?' · '+esc(p.organisme):''}</span></div>
+    <button class="btn sm primary" onclick="savePartenaire(${id})">💾 Enregistrer</button><button class="btn sm danger" onclick="delPartenaire(${id})">🗑️</button><button class="btn sm" onclick="closeModal()">✕</button></div>
+  <div class="modal-b">
+    <div class="fgrid3">
+      ${f('nom','Nom *')}
+      <div><label class="fl">Catégorie</label><select class="f" id="pt_categorie">${PART_CATS.map(c=>`<option ${c===p.categorie?'selected':''}>${c}</option>`).join('')}</select></div>
+      ${f('organisme','Organisme / dispositif')}
+      ${f('contact_nom','Contact')}${f('fonction','Fonction')}${f('email','Email')}${f('telephone','Téléphone')}${f('site','Site')}${f('ville','Ville')}${f('region','Région')}
+      <div><label class="fl">Statut</label><select class="f" id="pt_statut">${Object.entries(PART_ST).map(([k,v])=>`<option value="${k}" ${k===(p.statut||'a_contacter')?'selected':''}>${v[0]}</option>`).join('')}</select></div>
+      ${f('montant','Montant (€)','number')}${f('echeance','Échéance / date limite','date')}
+      <div style="grid-column:span 3"><label class="fl">Projets concernés</label>${msHtml('pt_projets',window.MS_OPTS.pt_projets,p.projets||[],'Rechercher un projet…')}</div>
+    </div>
+    <label class="fl" style="margin-top:8px">Notes (dossier, pièces, conditions…)</label><textarea class="f" id="pt_notes" style="height:64px">${esc(p.notes||'')}</textarea>
+    ${notesHtml('partenaire',id,notesP)}
+  </div>`;
+  document.getElementById('overlay').classList.add('open');
+}
+async function savePartenaire(id){
+  const g=k=>{const el=document.getElementById('pt_'+k);return el?(el.value.trim()||null):null;};
+  const row={nom:g('nom'),categorie:g('categorie'),organisme:g('organisme'),contact_nom:g('contact_nom'),fonction:g('fonction'),email:g('email'),telephone:g('telephone'),site:g('site'),ville:g('ville'),region:g('region'),statut:g('statut'),montant:+g('montant')||null,echeance:g('echeance'),notes:g('notes'),projets:msSelected('pt_projets').map(Number)};
+  if(!row.nom){toast('Nom requis',true);return;}
+  const {error}=await sb.from('partenaires').update(row).eq('id',id); if(error){toast(error.message,true);return;}
+  window.DIRTY=false;toast('✓ Modifications enregistrées');await loadPartenaires();await openPartenaire(id,true);
+}
+async function delPartenaire(id){if(!confirm('Supprimer ce partenaire ?'))return;await sb.from('partenaires').delete().eq('id',id);toast('Partenaire supprimé');closeModal(true);await loadPartenaires();}
+function openNewPartenaire(){
+  document.getElementById('modal').innerHTML=`<div class="modal-h"><span style="font-size:20px">🤝</span><h3>Ajouter un partenaire</h3><button class="btn sm" onclick="closeModal()">✕</button></div>
+  <div class="modal-b"><div class="fgrid3">
+    <div><label class="fl">Nom *</label><input class="f" id="npt_nom" placeholder="SACEM, Crédit Agricole, Fondation…"></div>
+    <div><label class="fl">Catégorie</label><select class="f" id="npt_cat">${PART_CATS.map(c=>`<option>${c}</option>`).join('')}</select></div>
+    <div><label class="fl">Organisme / dispositif</label><input class="f" id="npt_org" placeholder="Aide à la diffusion, mécénat culturel…"></div>
+    <div><label class="fl">Contact</label><input class="f" id="npt_contact"></div><div><label class="fl">Email</label><input class="f" id="npt_email"></div><div><label class="fl">Téléphone</label><input class="f" id="npt_tel"></div>
+  </div><button class="btn primary" style="margin-top:10px" onclick="createPartenaire()">💾 Créer</button></div>`;
+  document.getElementById('overlay').classList.add('open');
+}
+async function createPartenaire(){
+  const g=k=>document.getElementById('npt_'+k).value.trim()||null; if(!g('nom')){toast('Nom requis',true);return;}
+  const {data,error}=await sb.from('partenaires').insert({nom:g('nom'),categorie:g('cat'),organisme:g('org'),contact_nom:g('contact'),email:g('email'),telephone:g('tel')}).select().single();
+  if(error){toast(error.message,true);return;}
+  toast('✓ Partenaire créé');await loadPartenaires();openPartenaire(data.id);
+}
+function exportPartenairesCSV(){
+  const rows=filteredPartenaires();const H=['nom','categorie','organisme','contact_nom','fonction','email','telephone','site','ville','region','statut','montant','echeance','notes'];
+  const csv=[H.join(';')].concat(rows.map(p=>H.map(k=>'"'+String(p[k]??'').replace(/"/g,'""')+'"').join(';'))).join('\n');
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv'}));a.download='partenaires_scenya.csv';a.click();toast('⬇️ '+rows.length+' partenaire(s) exporté(s)');
+}
+
 /* ===== Historique des versions ===== */
-const APP_VERSION='2.5';
+const APP_VERSION='2.6';
 const CHANGELOG=[
+ ['2.6','9 septembre 2026','Référentiels',[
+   '50 typologies (SMAC, théâtres, scènes, salons, réseaux, opéra, musée, bars, promoteurs, managers, labels, mairies, instituts, écoles, compagnies, comités, centres, ambassades, agences, studios…) — plusieurs par fiche',
+   'Saisie des typologies par menu avec recherche, regroupées par famille (Lieux & diffusion / Institutions / Professionnels)',
+   'Fiches Prospectacles enrichies (comités des fêtes, offices de tourisme, musées, opéras, écoles, théâtres, tremplins, bars)',
+   'Médias : 7 catégories (Télé, Radio, Presse écrite, Réseaux sociaux, Web, Agence de presse, Autres), ajout et modification d\'un média',
+   'Nouvel onglet Partenaires : mécénat / sponsors (Entreprise), Subventions (SACEM, ADAMI, SPEDIDAM, CNM, DRAC pré-créés), Autres — contact, projets concernés, montant, statut, échéance, notes, export']],
  ['2.5','7 septembre 2026','Historique commercial',[
    'Fiche client : « Projets liés » compact avec statut coloré et conditions proposées visibles (ex. Django — OPTION — 3 500 € HT + transport)',
    'Menu « ＋ Proposer un projet » : filtre par esthétique, multi-sélection, liaison en un clic (Lier) ou avec saisie de l\'échange',
@@ -1384,12 +1536,12 @@ document.addEventListener('click',e=>{
 function closeModal(fromRoute){
   if(!fromRoute&&window.DIRTY&&!window.FORCE_CLOSE){guardDirty().then(ok=>{if(ok){window.FORCE_CLOSE=true;closeModal();window.FORCE_CLOSE=false;}});return;}
   document.getElementById('overlay').classList.remove('open');window.DIRTY=false;window.SAVE_FN=null;
-  if(!fromRoute&&/^#\/(lieu|projet|date|media|artiste)\//.test(location.hash))setHash('/'+window.CURRENT_TAB+(window.CURRENT_TAB==='annuaire'?buildQS():''),true);}
+  if(!fromRoute&&/^#\/(lieu|projet|date|media|artiste|partenaire)\//.test(location.hash))setHash('/'+window.CURRENT_TAB+(window.CURRENT_TAB==='annuaire'?buildQS():''),true);}
 function getMonths(el){return [...document.querySelectorAll('#'+el+' .chip.on')].map(c=>+c.dataset.m);}
 async function saveLieu(id){
   const l=DB.lieux.find(x=>x.id===id);
   const g=x=>document.getElementById(x).value.trim()||null;
-  const selTypes=[...document.querySelectorAll('.chip.typ.on')].map(c=>+c.dataset.t);
+  const selTypes=msSelected('mTypes').map(Number);
   const soc=socialsRead('mS_'); if(!soc.site)soc.site=g('mSite');
   const lieuUpd={...soc,nom:g('mNom'),types:selTypes,type_id:selTypes[0]||null,adresse:g('mAdr'),cp:g('mCp'),ville:g('mVille'),region:g('mReg'),pays:g('mPays'),telephone:g('mTel'),email:g('mEmail'),
     diffusion_mois:getMonths('mDiff'),diffusion_detail:g('mDiffDetail'),programmation_mois:getMonths('mProg'),programmation_detail:g('mProgDetail'),
@@ -1496,7 +1648,7 @@ function socialsHtml(o,prefix){
 function socialsRead(prefix){const o={};SOCIALS.forEach(([k])=>{const el=document.getElementById(prefix+k);if(el)o[k]=el.value.trim()||null;});return o;}
 
 /* ===== LOT H : ROUTAGE PAR URL (multi-onglets, liens réels, recherche conservée) ===== */
-const TABS=['annuaire','pilotage','projets','dates','billet','renta','medias','rappro'];
+const TABS=['annuaire','pilotage','projets','dates','billet','renta','medias','partenaires','rappro'];
 window.CURRENT_TAB='annuaire'; window.ROUTING=false;
 function setHash(path,replace){const h='#'+path;window.LAST_HASH=h;if(location.hash===h)return;window.ROUTING=true;if(replace)history.replaceState(null,'',h);else history.pushState(null,'',h);setTimeout(()=>window.ROUTING=false,0);}
 function buildQS(){
@@ -1531,6 +1683,7 @@ async function routeFromHash(){
   if(k==='artiste'&&id){switchTab('projets',true);openArtiste(id,true);return;}
   if(k==='date'&&id){switchTab('dates',true);openDate(id,true);return;}
   if(k==='media'&&id){switchTab('medias',true);if(!DB.medias)await loadMedias();openMedia(id,true);return;}
+  if(k==='partenaire'&&id){switchTab('partenaires',true);if(!DB.partenaires)await loadPartenaires();openPartenaire(id,true);return;}
   switchTab('annuaire',true);
 }
 window.addEventListener('hashchange',()=>{if(!window.ROUTING&&window.APP_READY)routeFromHash();});
@@ -1538,8 +1691,9 @@ function switchTab(v,fromRoute){
   window.CURRENT_TAB=v;
   if(!fromRoute)setHash('/'+v+(v==='annuaire'?buildQS():''));
   document.querySelectorAll('.tab').forEach(t=>t.classList.toggle('on',t.dataset.v===v));
-  ['annuaire','pilotage','projets','dates','billet','renta','medias','rappro'].forEach(x=>{const el=document.getElementById('v-'+x);if(el)el.style.display=x===v?'block':'none';});
+  TABS.forEach(x=>{const el=document.getElementById('v-'+x);if(el)el.style.display=x===v?'block':'none';});
   if(v==='medias'&&!DB.medias)loadMedias();
+  if(v==='partenaires')loadPartenaires();
   if(v==='pilotage')renderPilotage();
   if(v==='renta')renderRenta();
   if(v==='billet')renderBillet();
