@@ -153,7 +153,7 @@
 <div id="appView" style="display:none">
   <div class="topbar">
     <div class="logo">S</div>
-    <div><h1>Scenya CRM</h1><div class="sub"><span onclick="openChangelog()" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px" title="Historique des versions">v3.0</span> · agence de booking</div></div>
+    <div><h1>Scenya CRM</h1><div class="sub"><span onclick="openChangelog()" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px" title="Historique des versions">v3.1</span> · agence de booking</div></div>
     <div class="tabs">
       <a class="tab on" data-v="annuaire" href="#/annuaire" style="text-decoration:none">🏛️ Annuaire</a>
       <a class="tab" data-v="pilotage" href="#/pilotage" style="text-decoration:none">📊 Pilotage</a>
@@ -970,6 +970,60 @@ function mailingCSV(scope){
   const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv'}));a.download='mailing_'+scope+'_'+new Date().toISOString().slice(0,10)+'.csv';a.click();toast('⬇️ '+rows.length+' contact(s) exporté(s)');
 }
 
+/* ===== LOT S : CALENDRIER ÉQUIPE (liste de dates Option + Confirmé) ===== */
+const CAL_MOIS=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre'];
+function calDateLabel(d){const [y,m,j]=d.date_spectacle.split('-');return (+j)+' '+CAL_MOIS[+m-1]+' '+y;}
+function calStatut(st){return st==='option'?'OPTION':['confirmee','realisee'].includes(st)?'CONFIRMÉ':'';}
+function calDates(pid){
+  const st=document.getElementById('calSt').value,from=document.getElementById('calFrom').value,to=document.getElementById('calTo').value,sais=document.getElementById('calSais').value,fut=document.getElementById('calFut').checked;
+  const allowed=st==='option'?['option']:st==='confirme'?['confirmee','realisee']:['option','confirmee','realisee'];   // jamais Intérêt / prospection
+  return (DB.datesAll||[]).filter(d=>d.projet_id===pid&&allowed.includes(d.statut)&&(!from||d.date_spectacle>=from)&&(!to||d.date_spectacle<=to)&&(!sais||saisonOf(d.date_spectacle)===sais)&&(!fut||d.date_spectacle>=today())).sort((a,b)=>a.date_spectacle.localeCompare(b.date_spectacle));
+}
+function calText(pid){
+  const p=(DB.projList||[]).find(x=>x.id===pid)||{};const ds=calDates(pid);
+  const lines=[p.nom+' — Dates à venir',''];
+  ds.forEach(d=>{const l=d.lieu_id?DB.lieux.find(x=>x.id===d.lieu_id):null;const ville=l?(l.ville||''):(d.ville_texte||'');const lieu=l?l.nom:(d.lieu_texte||'');
+    lines.push(calDateLabel(d)+(ville?' — '+ville:''));if(lieu)lines.push(lieu);if(d.heure)lines.push(d.heure.slice(0,5).replace(':','h'));lines.push(calStatut(d.statut));lines.push('');});
+  if(!ds.length)lines.push('(aucune date en option ou confirmée pour cette sélection)');
+  return lines.join('\n').trim();
+}
+function openCalendrierEquipe(pid){
+  const box=document.getElementById('calEquipe');if(box.style.display!=='none'){box.style.display='none';return;}
+  const sais=[...new Set((DB.datesAll||[]).filter(d=>d.projet_id===pid).map(d=>saisonOf(d.date_spectacle)))].sort();
+  box.innerHTML=`<div class="card" style="padding:12px;border-color:var(--primary-2)">
+    <div class="flex between center wrap-f" style="margin-bottom:8px"><b>📅 Calendrier équipe — liste des dates Option + Confirmé</b><span class="mini">les dates en simple intérêt ne sont jamais communiquées aux équipes</span></div>
+    <div class="flex wrap-f center" style="gap:8px;margin-bottom:8px">
+      <select class="f" id="calSt" onchange="renderCal(${pid})" style="width:190px"><option value="both">✅⏳ Options + Confirmées</option><option value="confirme">✅ Confirmées uniquement</option><option value="option">⏳ Options uniquement</option></select>
+      <select class="f" id="calSais" onchange="renderCal(${pid})" style="width:150px"><option value="">Toutes saisons</option>${sais.map(s=>`<option>${s}</option>`).join('')}</select>
+      <span class="mini">du</span><input class="f" id="calFrom" type="date" onchange="renderCal(${pid})" style="width:140px"><span class="mini">au</span><input class="f" id="calTo" type="date" onchange="renderCal(${pid})" style="width:140px">
+      <label class="mini" style="cursor:pointer"><input type="checkbox" id="calFut" checked onchange="renderCal(${pid})"> dates futures uniquement</label>
+    </div>
+    <div class="flex wrap-f center" style="gap:6px;margin-bottom:8px"><b style="font-size:12px">Destinataires :</b><span class="mini">cases cochées dans l'équipe ci-dessous, ou</span>
+      <button class="btn sm" onclick="grpSelect('lead');renderCal(${pid})">artiste lead</button><button class="btn sm" onclick="grpSelect('artiste');renderCal(${pid})">tous les artistes</button><button class="btn sm" onclick="grpSelect('technicien');renderCal(${pid})">tous les techniciens</button><button class="btn sm" onclick="grpSelect('equipe');renderCal(${pid})">toute l'équipe</button><button class="btn sm" onclick="grpSelect('');renderCal(${pid})">aucun</button>
+      <span class="mini" id="calDest"></span></div>
+    <label class="fl">Prévisualisation <span class="mini">(modifiable avant envoi)</span></label>
+    <textarea class="f" id="calPreview" style="height:220px;font-family:inherit;font-size:13px;line-height:1.5"></textarea>
+    <div class="flex wrap-f" style="gap:8px;margin-top:8px"><button class="btn primary" onclick="calEnvoyer(${pid})">✉️ Envoyer aux personnes sélectionnées</button><button class="btn" onclick="calCopier()">📋 Copier la liste</button><button class="btn" onclick="document.getElementById('calEquipe').style.display='none'">Fermer</button></div>
+  </div>`;
+  box.style.display='block';renderCal(pid);box.scrollIntoView({behavior:'smooth',block:'start'});
+}
+function renderCal(pid){
+  const ta=document.getElementById('calPreview');if(!ta)return;ta.value=calText(pid);
+  const checked=[...document.querySelectorAll('#modal .grp:checked')];const mails=[...new Set(checked.map(c=>c.dataset.email).filter(Boolean))];
+  document.getElementById('calDest').textContent='→ '+checked.length+' sélectionné(s) · '+mails.length+' adresse(s)'+(checked.length-mails.length>0?' · '+(checked.length-mails.length)+' sans email':'')+' · '+calDates(pid).length+' date(s)';
+}
+function calCopier(){const t=document.getElementById('calPreview').value;navigator.clipboard.writeText(t).then(()=>toast('📋 Liste copiée — à coller dans un mail, WhatsApp ou un document')).catch(()=>{document.getElementById('calPreview').select();document.execCommand('copy');toast('📋 Liste copiée');});}
+function calEnvoyer(pid){
+  const checked=[...document.querySelectorAll('#modal .grp:checked')];const mails=[...new Set(checked.map(c=>c.dataset.email).filter(Boolean).map(e=>e.trim()))];
+  if(!checked.length){toast('Sélectionne d\'abord les destinataires (cases ou boutons)',true);return;}
+  if(!mails.length){toast('Aucune adresse email parmi les membres sélectionnés',true);return;}
+  const p=(DB.projList||[]).find(x=>x.id===pid)||{};const body=document.getElementById('calPreview').value;
+  if(body.length>1800&&!confirm('La liste est longue : certaines messageries tronquent le texte pré-rempli. Continuer ? (sinon utilise « Copier la liste »)'))return;
+  const href='mailto:?cc='+mails.join(',')+'&subject='+encodeURIComponent(p.nom+' — dates à venir')+'&body='+encodeURIComponent(body);
+  const a=document.createElement('a');a.href=href;a.style.display='none';document.body.appendChild(a);a.click();a.remove();
+  toast('✉️ Mail préparé pour '+mails.length+' adresse(s) en CC');
+}
+
 /* ===== LOT N : MULTI-SÉLECTION AVEC RECHERCHE ===== */
 function msHtml(id,options,selected,ph){
   const sel=new Set((selected||[]).map(String));
@@ -1487,8 +1541,13 @@ function exportPartenairesCSV(){
 }
 
 /* ===== Historique des versions ===== */
-const APP_VERSION='3.0';
+const APP_VERSION='3.1';
 const CHANGELOG=[
+ ['3.1','11 septembre 2026','Calendrier équipe',[
+   'Fiche projet → « 📅 Calendrier équipe » : liste des dates du projet (date, ville, lieu, heure, OPTION / CONFIRMÉ) — les dates en simple intérêt ne sont jamais communiquées',
+   'Filtres : Options + Confirmées / Confirmées / Options, saison, période du/au, dates futures uniquement',
+   'Destinataires : artiste lead, tous les artistes, tous les techniciens, toute l\'équipe ou sélection manuelle (emails des fiches équipe)',
+   'Prévisualisation modifiable, « Copier la liste » (mail, WhatsApp, document) et « Envoyer » (mail en CC avec la liste dans le corps)']],
  ['3.0','11 septembre 2026','Fiche projet',[
    'Bouton « 📋 Copier » sur le pitch commercial (confirmation « Pitch copié. »)',
    'Documents & kit promo : catégorie (kit promo, dossier presse, fiche technique, rider, photos, vidéo, contrat type…), lien cliquable, ✏️ Modifier (titre, lien, catégorie), 🗑️ Supprimer avec confirmation',
@@ -2412,7 +2471,8 @@ async function openProjet(id,fromRoute){
     <div class="card nodirty" style="padding:8px 11px;margin-top:10px;background:var(--surface-2)"><div class="flex center wrap-f" style="gap:7px">
       <b style="font-size:12.5px">👥 Contacter l'équipe :</b><span class="mini">cocher des membres, ou</span>
       <button class="btn sm" onclick="grpSelect('lead')">artiste lead</button><button class="btn sm" onclick="grpSelect('artiste')">tous les artistes</button><button class="btn sm" onclick="grpSelect('technicien')">tous les techniciens</button><button class="btn sm" onclick="grpSelect('equipe')">toute l'équipe (+ intervenants)</button><button class="btn sm" onclick="grpSelect('')">aucun</button>
-      <span style="flex:1"></span><button class="btn sm primary" onclick="grpMail()">✉️ Mail au groupe</button><button class="btn sm" onclick="grpTel()">📞 Numéros du groupe</button></div></div>
+      <span style="flex:1"></span><button class="btn sm primary" onclick="grpMail()">✉️ Mail au groupe</button><button class="btn sm" onclick="grpTel()">📞 Numéros du groupe</button><button class="btn sm primary" onclick="openCalendrierEquipe(${id})">📅 Calendrier équipe</button></div>
+      <div id="calEquipe" class="nodirty" style="display:none;margin-top:10px"></div></div>
     <div id="pLineup">${lineupSections(id,lu)}</div>
     <div class="card nodirty" style="padding:10px;margin-top:8px;background:var(--surface-2)">
       <div class="flex center wrap-f" style="gap:7px">
