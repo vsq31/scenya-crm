@@ -153,7 +153,7 @@
 <div id="appView" style="display:none">
   <div class="topbar">
     <div class="logo">S</div>
-    <div><h1>Scenya CRM</h1><div class="sub"><span onclick="openChangelog()" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px" title="Historique des versions">v2.9</span> · agence de booking</div></div>
+    <div><h1>Scenya CRM</h1><div class="sub"><span onclick="openChangelog()" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px" title="Historique des versions">v3.0</span> · agence de booking</div></div>
     <div class="tabs">
       <a class="tab on" data-v="annuaire" href="#/annuaire" style="text-decoration:none">🏛️ Annuaire</a>
       <a class="tab" data-v="pilotage" href="#/pilotage" style="text-decoration:none">📊 Pilotage</a>
@@ -1080,6 +1080,7 @@ async function openArtiste(id,fromRoute){
       <div><label class="fl">YouTube${a.youtube?` <a href="${esc(absUrl(a.youtube))}" target="_blank" class="mini" style="text-transform:none">↗</a>`:''}</label><input class="f" id="aYt" value="${esc(a.youtube||'')}"></div>
     </div>
     <label class="fl" style="margin-top:10px">Note générale</label><textarea class="f" id="aNotes" style="height:56px">${esc(a.notes||'')}</textarea>
+    ${gestionArtisteHtml(a)}
     ${notesHtml('artiste',id,notesA)}
   </div>`;
   document.getElementById('overlay').classList.add('open');
@@ -1095,9 +1096,11 @@ async function unlinkProjetArtiste(artId,pid){if(!confirm('Détacher ce projet d
 async function createArtisteStandalone(){const nom=prompt('Nom du nouvel artiste :');if(!nom||!nom.trim())return;const {data,error}=await sb.from('artistes').insert({nom:nom.trim()}).select().single();if(error){toast(error.message,true);return;}toast('✓ Artiste créé');await loadProjets();openArtiste(data.id);}
 function renderArtistes(){
   const el=document.getElementById('artBody'); if(!el)return;
-  const arts=(DB.artistes||[]).slice().sort((a,b)=>a.nom.localeCompare(b.nom));
-  el.innerHTML=arts.map(a=>{const projs=projetsOf(a.id);const s=statsFor(projs.map(p=>p.id));
-    return `<details class="acc"><summary>🎤 <a class="lnk" href="#/artiste/${a.id}" onclick="event.stopPropagation()"><b>${esc(a.nom)}</b></a> <span class="mini">— ${projs.length} projet(s) · ${s.real} date(s) confirmées/réalisées · ${s.commReal.toLocaleString('fr-FR')} € de commission</span></summary>
+  const showArch=!!window.SHOW_ARCH_ART;
+  const arts=(DB.artistes||[]).filter(a=>showArch||a.archive!==true).slice().sort((a,b)=>a.nom.localeCompare(b.nom));
+  const nArch=(DB.artistes||[]).filter(a=>a.archive===true).length;
+  el.innerHTML=(nArch?`<div class="mini" style="margin-bottom:6px"><label style="cursor:pointer"><input type="checkbox" ${showArch?'checked':''} onchange="window.SHOW_ARCH_ART=this.checked;renderArtistes()"> afficher les ${nArch} artiste(s) archivé(s)</label></div>`:'')+arts.map(a=>{const projs=projetsOf(a.id);const s=statsFor(projs.map(p=>p.id));
+    return `<details class="acc" ${a.archive?'style="opacity:.55"':''}><summary>🎤 <a class="lnk" href="#/artiste/${a.id}" onclick="event.stopPropagation()"><b>${esc(a.nom)}</b></a>${a.archive?' <span class="pill m">archivé</span>':''} <span class="mini">— ${projs.length} projet(s) · ${s.real} date(s) confirmées/réalisées · ${s.commReal.toLocaleString('fr-FR')} € de commission</span></summary>
     <div class="acc-b">${projs.map(p=>`<div class="flex between center" style="padding:5px 0;border-bottom:1px solid var(--line)"><span>${projDot(p)}<a class="lnk" href="#/projet/${p.id}">${esc(p.nom)}</a> <span class="mini">${(DB.datesCount[p.id]||0)} date(s)</span></span><a class="btn sm" href="#/artiste/${a.id}" onclick="window.ART_SEL=${p.id}">📊 Stats du projet</a></div>`).join('')||'<span class="mini">Aucun projet rattaché.</span>'}</div></details>`;}).join('')||'<span class="mini">Aucun artiste.</span>';
 }
 
@@ -1484,8 +1487,13 @@ function exportPartenairesCSV(){
 }
 
 /* ===== Historique des versions ===== */
-const APP_VERSION='2.9';
+const APP_VERSION='3.0';
 const CHANGELOG=[
+ ['3.0','11 septembre 2026','Fiche projet',[
+   'Bouton « 📋 Copier » sur le pitch commercial (confirmation « Pitch copié. »)',
+   'Documents & kit promo : catégorie (kit promo, dossier presse, fiche technique, rider, photos, vidéo, contrat type…), lien cliquable, ✏️ Modifier (titre, lien, catégorie), 🗑️ Supprimer avec confirmation',
+   'Projets : Archiver / Restaurer, Supprimer définitivement (bloqué tant que des dates ou négociations existent, double confirmation, dépendances affichées)',
+   'Artistes : Archiver / Restaurer (masqué de la colonne et des listes), Supprimer définitivement (bloqué s\'il a des projets)']],
  ['2.9','11 septembre 2026','Contacts équipe',[
    'Chaque membre du line-up peut être rattaché à sa fiche artiste : email et téléphone viennent alors de la fiche (une seule source, à jour partout)',
    'Pastille 🟢 / 🔴 devant chaque artiste, technicien et intervenant (prénom, nom, email, téléphone, instrument / fonction, cachet brut) avec le détail des manques au survol',
@@ -2389,7 +2397,7 @@ async function openProjet(id,fromRoute){
       <div><label class="fl">Référence SACD</label><input class="f" id="pSacd" value="${esc(p.sacd_ref||'')}"></div>
       <div><label class="fl">Artiste principal</label><div style="font-size:13px;padding-top:6px">${(()=>{const a=projArtistePrincipal(p);return a?`${projDot(p)}<a class="lnk" href="#/artiste/${a.id}"><b>${esc(a.nom)}</b></a>${a.email?` · <a href="mailto:${esc(a.email)}">✉️ ${esc(a.email)}</a>`:''}${a.telephone?` · <a href="tel:${esc(a.telephone.replace(/\s/g,''))}">📞 ${esc(a.telephone)}</a>`:''}<span class="mini"> · couleur héritée de l'artiste</span>`:'<span class="mini">Aucun artiste rattaché — la couleur du projet suit celle de son artiste principal</span>';})()}</div></div>
     </div>
-    <label class="fl" style="margin-top:12px">Pitch commercial (modifiable avant chaque envoi)</label>
+    <div class="flex between center" style="margin-top:12px"><label class="fl" style="margin:0">Pitch commercial (modifiable avant chaque envoi)</label><button class="btn sm nodirty" onclick="copyPitch()" title="Copier le pitch dans le presse-papiers">📋 Copier</button></div>
     <textarea class="f" id="pPitch" style="height:56px">${esc(p.pitch||'')}</textarea>
     ${socialsHtml(p,'pS_')}
     <div class="sec-t">🤝 Deal — alimente automatiquement commissions & objectifs</div>
@@ -2436,10 +2444,12 @@ async function openProjet(id,fromRoute){
     <div class="sec-t">🤝 Négociations en cours sur ce projet</div>
     ${projNegoHtml(id)}
     <div class="sec-t">📁 Documents & kit promo</div>
-    <div id="pDocs">${dc.map(x=>`<div class="flex center" style="gap:7px;margin-bottom:6px" data-did="${x.id}">
-      <span>${x.externe?'🔗':'📄'}</span><b style="font-size:12.5px">${esc(x.nom)}</b><span class="mini" style="flex:1">${esc(x.url||'')}</span>
-      <button class="btn sm danger" onclick="delDoc(${x.id},${id},this)">✕</button></div>`).join('')}</div>
-    <div class="flex center" style="gap:7px"><input class="f" id="ndNom" placeholder="Nom (kit promo, fiche technique…)" style="width:220px"><input class="f" id="ndUrl" placeholder="Lien (Drive, YouTube…)" style="flex:1"><button class="btn sm" onclick="addDoc(${id})">＋ Ajouter</button></div>
+    <div id="pDocs" class="nodirty">${dc.map(x=>`<div class="flex center wrap-f" style="gap:7px;margin-bottom:6px" data-did="${x.id}" id="doc${x.id}">
+      <span>${x.externe?'🔗':'📄'}</span>${x.categorie?`<span class="pill m">${esc(x.categorie)}</span>`:''}<b style="font-size:12.5px">${esc(x.nom)}</b>${x.url?`<a class="mini" href="${esc(absUrl(x.url))}" target="_blank" rel="noopener" style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(x.url)} ↗</a>`:'<span style="flex:1"></span>'}
+      <button class="btn sm" onclick="editDoc(${x.id},${id})">✏️ Modifier</button><button class="btn sm danger" onclick="delDoc(${x.id},${id},this)">🗑️</button></div>
+      <div id="docEdit${x.id}"></div>`).join('')}</div>
+    <div class="flex center wrap-f nodirty" style="gap:7px"><select class="f" id="ndCat" style="width:150px">${DOC_CATS.map(c=>`<option>${c}</option>`).join('')}</select><input class="f" id="ndNom" placeholder="Titre (Dossier presse 2026…)" style="width:220px"><input class="f" id="ndUrl" placeholder="Lien (Drive, YouTube…)" style="flex:1"><button class="btn sm" onclick="addDoc(${id})">＋ Ajouter</button></div>
+    ${gestionProjetHtml(p)}
     ${notesHtml('projet',id,notesP)}
   </div>`;
   document.getElementById('overlay').classList.add('open');
@@ -2505,14 +2515,78 @@ async function addRole(pid){
   if(error){toast(error.message,true);return;}
   toast('✓ Rôle « '+nom+' » créé'); await loadProjets(); openProjet(pid);
 }
+const DOC_CATS=['Kit promo','Dossier presse','Fiche technique','Rider','Photos','Vidéo','Contrat type','Autre'];
 async function addDoc(pid){
   const nom=document.getElementById('ndNom').value.trim();const url=document.getElementById('ndUrl').value.trim();
-  if(!nom){toast('Nom requis',true);return;}
-  const {error}=await sb.from('projet_documents').insert({projet_id:pid,nom,url:url||null,externe:!!url});
+  if(!nom){toast('Titre requis',true);return;}
+  const {error}=await sb.from('projet_documents').insert({projet_id:pid,nom,url:url||null,externe:!!url,categorie:document.getElementById('ndCat').value||null});
   if(error){toast(error.message,true);return;}
-  await loadProjets(); openProjet(pid);
+  toast('✓ Lien ajouté');await loadProjets(); openProjet(pid,true);
 }
-async function delDoc(id,pid,btn){await sb.from('projet_documents').delete().eq('id',id);await loadProjets();openProjet(pid);}
+function editDoc(id,pid){
+  const x=(DB.docs[pid]||[]).find(d=>d.id===id);const box=document.getElementById('docEdit'+id);if(!x||!box)return;if(box.innerHTML){box.innerHTML='';return;}
+  box.innerHTML=`<div class="card" style="padding:9px;margin:0 0 8px 26px;background:var(--surface-2)"><div class="flex center wrap-f" style="gap:7px">
+    <select class="f" id="edCat${id}" style="width:150px">${DOC_CATS.map(c=>`<option ${c===x.categorie?'selected':''}>${c}</option>`).join('')}</select>
+    <input class="f" id="edNom${id}" value="${esc(x.nom)}" placeholder="Titre" style="width:220px"><input class="f" id="edUrl${id}" value="${esc(x.url||'')}" placeholder="Lien" style="flex:1">
+    <button class="btn sm primary" onclick="saveDoc(${id},${pid})">💾 Enregistrer</button><button class="btn sm" onclick="document.getElementById('docEdit${id}').innerHTML=''">Annuler</button></div></div>`;
+  box.querySelector('#edNom'+id).focus();
+}
+async function saveDoc(id,pid){
+  const nom=document.getElementById('edNom'+id).value.trim(),url=document.getElementById('edUrl'+id).value.trim();
+  if(!nom){toast('Titre requis',true);return;}
+  const {error}=await sb.from('projet_documents').update({nom,url:url||null,externe:!!url,categorie:document.getElementById('edCat'+id).value||null}).eq('id',id);
+  if(error){toast(error.message,true);return;}
+  toast('✓ Lien modifié');await loadProjets();openProjet(pid,true);
+}
+async function delDoc(id,pid,btn){const x=(DB.docs[pid]||[]).find(d=>d.id===id)||{};if(!confirm('Supprimer le lien « '+(x.nom||'')+' » ?'))return;await sb.from('projet_documents').delete().eq('id',id);toast('Lien supprimé');await loadProjets();openProjet(pid,true);}
+function copyPitch(){const t=(document.getElementById('pPitch')||{}).value||'';if(!t.trim()){toast('Le pitch est vide',true);return;}navigator.clipboard.writeText(t).then(()=>toast('📋 Pitch copié.')).catch(()=>{const ta=document.getElementById('pPitch');ta.select();document.execCommand('copy');toast('📋 Pitch copié.');});}
+/* ===== Archivage / suppression sécurisée (projets & artistes) ===== */
+function projDeps(pid){
+  const dates=(DB.datesAll||[]).filter(d=>d.projet_id===pid).length,negos=(DB.negos||[]).filter(n=>n.projet_id===pid).length,lu=(DB.lineup[pid]||[]).length,docs=(DB.docs[pid]||[]).length,part=(DB.partenaires||[]).filter(p=>(p.projets||[]).includes(pid)).length;
+  return {dates,negos,lu,docs,part,bloquant:dates+negos};
+}
+function depsTxt(d){return [d.dates?d.dates+' date(s)':'',d.negos?d.negos+' négociation(s)':'',d.lu?d.lu+' membre(s) de line-up':'',d.docs?d.docs+' document(s)':'',d.part?d.part+' partenaire(s)':''].filter(Boolean).join(', ')||'aucune dépendance';}
+function gestionProjetHtml(p){
+  const d=projDeps(p.id);
+  return `<div class="sec-t">⚙️ Gestion du projet</div>
+  <p class="mini">Lié à : ${depsTxt(d)}.</p>
+  <div class="flex wrap-f nodirty" style="gap:7px">
+    ${p.actif===false?`<button class="btn sm" onclick="setProjetActif(${p.id},true)">↩️ Restaurer (réactiver)</button>`:`<button class="btn sm" onclick="setProjetActif(${p.id},false)">🗂️ Archiver (désactiver)</button>`}
+    <button class="btn sm danger" onclick="deleteProjetDef(${p.id})" ${d.bloquant?'title="Impossible tant que des dates ou négociations existent — archive plutôt"':''}>🗑️ Supprimer définitivement</button>
+  </div>`;
+}
+async function setProjetActif(pid,actif){const {error}=await sb.from('projets').update({actif}).eq('id',pid);if(error){toast(error.message,true);return;}toast(actif?'✓ Projet réactivé':'🗂️ Projet archivé — masqué des listes actives (filtre « Actif : Non » dans la fiche)');await loadProjets();openProjet(pid,true);}
+async function deleteProjetDef(pid){
+  const p=(DB.projList||[]).find(x=>x.id===pid)||{};const d=projDeps(pid);
+  if(d.bloquant){alert('Suppression impossible : « '+p.nom+' » est lié à '+depsTxt(d)+'.\n\nArchive-le (Archiver) pour le retirer des listes sans perdre l\'historique, ou supprime d\'abord ses dates et négociations.');return;}
+  if(!confirm('Supprimer DÉFINITIVEMENT le projet « '+p.nom+' » ?\nSeront supprimés : '+depsTxt(d)+'.\nCette action est irréversible.'))return;
+  if(!confirm('Dernière confirmation : suppression définitive de « '+p.nom+' » ?'))return;
+  await sb.from('lineup').delete().eq('projet_id',pid);await sb.from('projet_documents').delete().eq('projet_id',pid);await sb.from('projet_intervenants').delete().eq('projet_id',pid);await sb.from('projet_artistes').delete().eq('projet_id',pid);await sb.from('deals').delete().eq('projet_id',pid);
+  const {error}=await sb.from('projets').delete().eq('id',pid);if(error){toast(error.message,true);return;}
+  toast('🗑️ Projet supprimé');closeModal(true);await loadProjets();
+}
+function artDeps(aid){
+  const projs=projetsOf(aid);const lu=Object.values(DB.lineup||{}).flat().filter(m=>m.artiste_id===aid).length;
+  const dates=(DB.datesAll||[]).filter(d=>projs.some(p=>p.id===d.projet_id)).length;
+  return {projs:projs.length,lu,dates,bloquant:projs.length};
+}
+function gestionArtisteHtml(a){
+  const d=artDeps(a.id);
+  return `<div class="sec-t">⚙️ Gestion de la fiche artiste</div>
+  <p class="mini">Lié à : ${[d.projs?d.projs+' projet(s)':'',d.dates?d.dates+' date(s) via ses projets':'',d.lu?d.lu+' ligne(s) de line-up':''].filter(Boolean).join(', ')||'aucune dépendance'}.</p>
+  <div class="flex wrap-f nodirty" style="gap:7px">
+    ${a.archive?`<button class="btn sm" onclick="setArtisteArchive(${a.id},false)">↩️ Restaurer</button>`:`<button class="btn sm" onclick="setArtisteArchive(${a.id},true)">🗂️ Archiver</button>`}
+    <button class="btn sm danger" onclick="deleteArtisteDef(${a.id})">🗑️ Supprimer définitivement</button>
+  </div>`;
+}
+async function setArtisteArchive(aid,flag){const {error}=await sb.from('artistes').update({archive:flag}).eq('id',aid);if(error){toast(error.message,true);return;}toast(flag?'🗂️ Artiste archivé — masqué de la colonne et des listes':'✓ Artiste restauré');await loadProjets();openArtiste(aid,true);}
+async function deleteArtisteDef(aid){
+  const a=(DB.artistes||[]).find(x=>x.id===aid)||{};const d=artDeps(aid);
+  if(d.bloquant){alert('Suppression impossible : « '+a.nom+' » est rattaché à '+d.projs+' projet(s)'+(d.dates?' et '+d.dates+' date(s)':'')+'.\n\nArchive-le, ou détache d\'abord ses projets.');return;}
+  if(!confirm('Supprimer DÉFINITIVEMENT l\'artiste « '+a.nom+' » ? Cette action est irréversible.'))return;
+  const {error}=await sb.from('artistes').delete().eq('id',aid);if(error){toast(error.message,true);return;}
+  toast('🗑️ Artiste supprimé');closeModal(true);await loadProjets();
+}
 init();
 </script>
 </body>
