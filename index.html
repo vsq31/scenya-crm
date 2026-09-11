@@ -153,7 +153,7 @@
 <div id="appView" style="display:none">
   <div class="topbar">
     <div class="logo">S</div>
-    <div><h1>Scenya CRM</h1><div class="sub"><span onclick="openChangelog()" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px" title="Historique des versions">v2.8</span> · agence de booking</div></div>
+    <div><h1>Scenya CRM</h1><div class="sub"><span onclick="openChangelog()" style="cursor:pointer;text-decoration:underline;text-underline-offset:2px" title="Historique des versions">v2.9</span> · agence de booking</div></div>
     <div class="tabs">
       <a class="tab on" data-v="annuaire" href="#/annuaire" style="text-decoration:none">🏛️ Annuaire</a>
       <a class="tab" data-v="pilotage" href="#/pilotage" style="text-decoration:none">📊 Pilotage</a>
@@ -999,9 +999,17 @@ const PART_CATS=['ENTREPRISE','SUBVENTION','AUTRES'];
 const PART_ST={a_contacter:['À contacter','m'],en_cours:['En cours','a'],accorde:['Accordé','g'],refuse:['Refusé','r']};
 
 /* ===== LOT L : MAIL / APPEL DE GROUPE ===== */
-function grpSelect(cat){document.querySelectorAll('#modal .grp').forEach(c=>{c.checked=cat===''?false:cat==='equipe'?true:c.dataset.cat===cat;});}
+function grpSelect(cat){document.querySelectorAll('#modal .grp').forEach(c=>{c.checked=cat===''?false:cat==='equipe'?true:cat==='lead'?c.dataset.lead==='1':c.dataset.cat===cat;});}
 function grpPick(k){return [...document.querySelectorAll('#modal .grp:checked')].map(c=>c.dataset[k]).filter(Boolean);}
-function grpMail(){const to=grpPick('email');if(!to.length){toast('Aucune adresse dans la sélection — coche des membres ayant un email',true);return;}const p=(DB.projList||[]).find(x=>location.hash.endsWith('/projet/'+x.id));window.location.href='mailto:?bcc='+encodeURIComponent(to.join(','))+'&subject='+encodeURIComponent((p?p.nom+' — ':'')+'');toast('✉️ '+to.length+' destinataire(s) en Cci');}
+function grpMail(){
+  const checked=[...document.querySelectorAll('#modal .grp:checked')];const to=[...new Set(checked.map(c=>c.dataset.email).filter(Boolean).map(e=>e.trim()))];const sans=checked.length-checked.filter(c=>c.dataset.email).length;
+  if(!checked.length){toast('Coche d\'abord des membres (ou « tous les artistes / techniciens / toute l\'équipe »)',true);return;}
+  if(!to.length){toast('Aucune adresse email parmi les '+checked.length+' membre(s) sélectionné(s)',true);return;}
+  const p=(DB.projList||[]).find(x=>location.hash.endsWith('/projet/'+x.id));
+  const href='mailto:?cc='+to.join(',')+'&subject='+encodeURIComponent(p?p.nom:'');
+  const a=document.createElement('a');a.href=href;a.style.display='none';document.body.appendChild(a);a.click();a.remove();
+  toast('✉️ '+to.length+' adresse(s) en CC'+(sans?' · '+sans+' membre(s) sans email ignoré(s)':''));
+}
 async function grpTel(){const t=grpPick('tel');if(!t.length){toast('Aucun numéro dans la sélection',true);return;}try{await navigator.clipboard.writeText(t.join('\n'));}catch(e){}alert('📞 Numéros du groupe (copiés dans le presse-papiers) :\n\n'+t.join('\n'));}
 
 /* ===== LOT L : FICHE ARTISTE + STATS À DEUX NIVEAUX ===== */
@@ -1476,8 +1484,13 @@ function exportPartenairesCSV(){
 }
 
 /* ===== Historique des versions ===== */
-const APP_VERSION='2.8';
+const APP_VERSION='2.9';
 const CHANGELOG=[
+ ['2.9','11 septembre 2026','Contacts équipe',[
+   'Chaque membre du line-up peut être rattaché à sa fiche artiste : email et téléphone viennent alors de la fiche (une seule source, à jour partout)',
+   'Pastille 🟢 / 🔴 devant chaque artiste, technicien et intervenant (prénom, nom, email, téléphone, instrument / fonction, cachet brut) avec le détail des manques au survol',
+   'Boutons « 📞 Appeler » et « ✉️ Mail » visibles sur chaque ligne, sans ouvrir la fiche — pratique sur téléphone',
+   'Mail au groupe corrigé : adresses des membres sélectionnés en CC (plus en Cci), contrôle du nombre d\'adresses, raccourci « artiste lead »']],
  ['2.8','11 septembre 2026','Navigation artiste → projets',[
    'Colonne de gauche organisée par artiste : le nom en premier niveau, ses projets dessous (accordéon), projet courant surligné, accès direct à la fiche artiste',
    'Une seule couleur par artiste, héritée par tous ses projets (artiste principal du projet) — sélecteur dans la fiche Artiste, libellé retiré de la fiche projet',
@@ -2083,7 +2096,7 @@ async function loadDates(){
   if(dt.error||dlu.error){toast('Erreur dates : '+(dt.error||dlu.error).message,true);return false;}
   DB.datesAll=dt.data;
   DB.dateLineup={}; dlu.data.forEach(m=>{(DB.dateLineup[m.date_id]=DB.dateLineup[m.date_id]||[]).push(m);});
-  fillDateFilters(); renderDates(); fillDistList();
+  fillDateFilters(); renderDates(); fillDistList(); renderArtistes();
   return true;
 }
 function fillDateFilters(){
@@ -2296,19 +2309,28 @@ async function loadProjets(){
 }
 function artNames(pid){return (DB.projArt[pid]||[]).map(x=>{const a=DB.artistes.find(y=>y.id===x.artiste_id);return a?(x.lead?'⭐ ':'')+a.nom:null;}).filter(Boolean).join(', ');}
 function totCachets(pid){return (DB.lineup[pid]||[]).filter(m=>!m.remplacant_de).reduce((s,m)=>s+(+m.cachet||0),0);}
+const MEMBER_COMPLETUDE=[
+ ['Prénom',m=>!!m.prenom],['Nom',m=>!!m.nom&&m.nom!=='—'],['Email',m=>!!memberContact(m).email],['Téléphone',m=>!!memberContact(m).telephone],
+ [m=>(m.categorie||'artiste')==='technicien'?'Fonction':'Instrument',m=>!!m.instrument],['Cachet brut',m=>(m.categorie||'artiste')==='technicien'||m.remplacant_de?true:!!m.cachet]
+];
+function memberContact(m){const a=m.artiste_id?(DB.artistes||[]).find(x=>x.id===m.artiste_id):null;return {email:(a&&a.email)||m.email||'',telephone:(a&&a.telephone)||m.telephone||'',fromArtiste:!!(a&&(a.email||a.telephone)),artiste:a};}
+function memberCompletude(m){const manque=MEMBER_COMPLETUDE.filter(([n,f])=>!f(m)).map(([n])=>typeof n==='function'?n(m):n);return {ok:!manque.length,manque};}
+function memberDot(m){const c=memberCompletude(m);return `<span title="${c.ok?'Fiche complète.':'Informations manquantes : '+esc(c.manque.join(', '))}" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${c.ok?'var(--green)':'var(--red)'};flex-shrink:0"></span>`;}
 function memberRow(m,id,all){
   const name=[m.prenom,m.nom].filter(Boolean).join(' ')||'—';
   const principals=all.filter(x=>(x.categorie||'artiste')===(m.categorie||'artiste')&&!x.remplacant_de&&x.id!==m.id);
   const tech=(m.categorie||'artiste')==='technicien';
+  const ct=memberContact(m);
   return `<details class="acc ${m.lead?'lead':''} ${m.remplacant_de?'rempl':''}" data-lid="${m.id}">
-    <summary><input type="checkbox" class="grp nodirty" data-email="${esc(m.email||'')}" data-tel="${esc(m.telephone||'')}" data-cat="${m.categorie||'artiste'}" onclick="event.stopPropagation()" title="Sélectionner pour un mail / appel de groupe">${m.remplacant_de?'<span class="mini">↳ remplaçant</span>':''}${m.lead?'<span class="badge-lead">★ LEAD</span>':''}<span>${esc(name)}</span>${m.instrument?`<span class="mini">— ${esc(m.instrument)}</span>`:''}${m.cachet?`<span class="mini">· ${(+m.cachet).toLocaleString('fr-FR')} € brut</span>`:''}
-      <span style="flex:1"></span>${m.email?`<a href="mailto:${esc(m.email)}" onclick="event.stopPropagation()" title="${esc(m.email)}">✉️</a>`:''}${m.telephone?`<a href="tel:${esc(m.telephone.replace(/\s/g,''))}" onclick="event.stopPropagation()" title="${esc(m.telephone)}">📞</a>`:''}</summary>
+    <summary><input type="checkbox" class="grp nodirty" data-email="${esc(ct.email)}" data-tel="${esc(ct.telephone)}" data-cat="${m.categorie||'artiste'}" data-lead="${m.lead?'1':''}" onclick="event.stopPropagation()" title="Sélectionner pour un mail / appel de groupe">${memberDot(m)}${m.remplacant_de?'<span class="mini">↳ remplaçant</span>':''}${m.lead?'<span class="badge-lead">★ LEAD</span>':''}<span>${esc(name)}</span>${m.instrument?`<span class="mini">— ${esc(m.instrument)}</span>`:''}${m.cachet?`<span class="mini">· ${(+m.cachet).toLocaleString('fr-FR')} € brut</span>`:''}<span class="mini" style="opacity:.7">${tech?'🔧':'🎤'}</span>
+      <span style="flex:1"></span>${ct.telephone?`<a class="btn sm" href="tel:${esc(ct.telephone.replace(/\s/g,''))}" onclick="event.stopPropagation()" title="${esc(ct.telephone)}" style="padding:3px 8px;text-decoration:none">📞 Appeler</a>`:''}${ct.email?`<a class="btn sm" href="mailto:${esc(ct.email)}" onclick="event.stopPropagation()" title="${esc(ct.email)}" style="padding:3px 8px;text-decoration:none">✉️ Mail</a>`:''}</summary>
     <div class="acc-b"><div class="fgrid3" style="gap:7px">
       <div><label class="fl">Prénom</label><input class="f lp" value="${esc(m.prenom||'')}"></div>
       <div><label class="fl">Nom</label><input class="f ln2" value="${esc(m.nom||'')}"></div>
       <div><label class="fl">${tech?'Fonction':'Instrument / rôle'}</label><input class="f li" value="${esc(m.instrument||'')}" placeholder="${tech?'Régisseur son, lumière, backliner, tour manager…':'Saxophone, chant…'}"></div>
-      <div><label class="fl">Email</label><input class="f le" value="${esc(m.email||'')}"></div>
-      <div><label class="fl">Téléphone</label><input class="f lt" value="${esc(m.telephone||'')}"></div>
+      <div><label class="fl">Fiche artiste liée <span class="mini">(coordonnées uniques)</span></label><select class="f la" onchange="this.closest('.acc-b').querySelectorAll('.le,.lt').forEach(i=>i.disabled=!!this.value)"><option value="">— aucune (coordonnées saisies ici) —</option>${(DB.artistes||[]).map(a=>`<option value="${a.id}" ${m.artiste_id===a.id?'selected':''}>${esc(a.nom)}</option>`).join('')}</select></div>
+      <div><label class="fl">Email${ct.fromArtiste?' <span class="mini">(fiche artiste)</span>':''}</label><input class="f le" value="${esc(m.artiste_id?ct.email:(m.email||''))}" ${m.artiste_id?'disabled':''}></div>
+      <div><label class="fl">Téléphone${ct.fromArtiste?' <span class="mini">(fiche artiste)</span>':''}</label><input class="f lt" value="${esc(m.artiste_id?ct.telephone:(m.telephone||''))}" ${m.artiste_id?'disabled':''}></div>
       <div><label class="fl">Cachet brut (€)</label><input class="f lc" type="number" value="${m.cachet??''}" oninput="updTotal(${id})"></div>
       ${tech?'<input type="hidden" class="ll" value="false">':`<div><label class="fl">Artiste lead</label><select class="f ll"><option value="false" ${!m.lead?'selected':''}>Non</option><option value="true" ${m.lead?'selected':''}>Oui ★</option></select></div>`}
       <div><label class="fl">Catégorie</label><select class="f lcat"><option value="artiste" ${!tech?'selected':''}>🎤 Artiste</option><option value="technicien" ${tech?'selected':''}>🔧 Technicien</option></select></div>
@@ -2381,7 +2403,7 @@ async function openProjet(id,fromRoute){
     <textarea class="f" id="dCom" style="height:50px" placeholder="Ex. : objectif volontairement élevé car développement international prévu au second semestre…">${esc(d.commentaire_objectif||'')}</textarea>
     <div class="card nodirty" style="padding:8px 11px;margin-top:10px;background:var(--surface-2)"><div class="flex center wrap-f" style="gap:7px">
       <b style="font-size:12.5px">👥 Contacter l'équipe :</b><span class="mini">cocher des membres, ou</span>
-      <button class="btn sm" onclick="grpSelect('artiste')">tous les artistes</button><button class="btn sm" onclick="grpSelect('technicien')">tous les techniciens</button><button class="btn sm" onclick="grpSelect('equipe')">toute l'équipe (+ intervenants)</button><button class="btn sm" onclick="grpSelect('')">aucun</button>
+      <button class="btn sm" onclick="grpSelect('lead')">artiste lead</button><button class="btn sm" onclick="grpSelect('artiste')">tous les artistes</button><button class="btn sm" onclick="grpSelect('technicien')">tous les techniciens</button><button class="btn sm" onclick="grpSelect('equipe')">toute l'équipe (+ intervenants)</button><button class="btn sm" onclick="grpSelect('')">aucun</button>
       <span style="flex:1"></span><button class="btn sm primary" onclick="grpMail()">✉️ Mail au groupe</button><button class="btn sm" onclick="grpTel()">📞 Numéros du groupe</button></div></div>
     <div id="pLineup">${lineupSections(id,lu)}</div>
     <div class="card nodirty" style="padding:10px;margin-top:8px;background:var(--surface-2)">
@@ -2398,7 +2420,8 @@ async function openProjet(id,fromRoute){
       <input class="f in2" value="${esc(i.nom)}" placeholder="Nom" style="width:130px">
       <input class="f ie" value="${esc(i.email||'')}" placeholder="Email" style="flex:1">
       <input class="f it" value="${esc(i.telephone||'')}" placeholder="Tél" style="width:110px">
-      ${i.email?`<a href="mailto:${esc(i.email)}" title="Écrire">✉️</a>`:''}${i.telephone?`<a href="tel:${esc(i.telephone.replace(/\s/g,''))}" title="Appeler">📞</a>`:''}
+      ${i.telephone?`<a class="btn sm" href="tel:${esc(i.telephone.replace(/\s/g,''))}" title="Appeler" style="padding:3px 8px;text-decoration:none">📞</a>`:''}${i.email?`<a class="btn sm" href="mailto:${esc(i.email)}" title="Écrire" style="padding:3px 8px;text-decoration:none">✉️</a>`:''}
+      <span title="${i.email&&i.telephone?'Fiche complète.':'Informations manquantes : '+[!i.email?'Email':'',!i.telephone?'Téléphone':''].filter(Boolean).join(', ')}" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${i.email&&i.telephone?'var(--green)':'var(--red)'};flex-shrink:0"></span>
       <label class="mini" style="white-space:nowrap"><input type="checkbox" class="icc" ${i.copie_confirmation?'checked':''}> copie ✉️</label>
       <button class="btn sm danger" onclick="delInterv(${i.id},${id},this)">✕</button></div>`;}).join('')}</div>
     <div class="flex center" style="gap:7px">
@@ -2433,7 +2456,8 @@ async function saveProjet(id){
   for(const div of document.querySelectorAll('#pLineup [data-lid]')){
     await sb.from('lineup').update({prenom:div.querySelector('.lp').value.trim()||null,nom:div.querySelector('.ln2').value.trim()||'—',
       instrument:div.querySelector('.li').value.trim()||null,cachet:+div.querySelector('.lc').value||null,
-      email:div.querySelector('.le').value.trim()||null,telephone:div.querySelector('.lt').value.trim()||null,
+      artiste_id:+div.querySelector('.la').value||null,
+      email:div.querySelector('.la').value?null:(div.querySelector('.le').value.trim()||null),telephone:div.querySelector('.la').value?null:(div.querySelector('.lt').value.trim()||null),
       lead:div.querySelector('.ll').value==='true',categorie:div.querySelector('.lcat').value,remplacant_de:+div.querySelector('.lr').value||null}).eq('id',+div.dataset.lid);
   }
   for(const div of document.querySelectorAll('#pInterv [data-iid]')){
